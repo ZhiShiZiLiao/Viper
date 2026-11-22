@@ -1,0 +1,3912 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>圣书 · Sanctum</title>
+
+<style>
+  html,body{background:#020101;margin:0}
+  /* 首屏防闪遮罩：2 帧后自动淡出，不依赖 JS */
+  body::before{
+    content:"";position:fixed;inset:0;z-index:10001;
+    background:#020101;pointer-events:none;
+    animation:fadeBoot .5s ease .15s forwards;
+  }
+  @keyframes fadeBoot{to{opacity:0;visibility:hidden}}
+</style>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=Noto+Serif+SC:wght@400;600;700&display=swap"
+      media="print" onload="this.media='all'">
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three.module.js",
+    "three/addons/": "./vendor/jsm/"
+  }
+}
+</script>
+
+<style>
+/* ============================================================
+   第 1 部分：首页样式（原 index.html）
+   ============================================================ */
+
+:root{
+  --ink:#050305;
+  --blood:#8d0b12;
+  --blood-hot:#c3111a;
+  --bone:#f2ece3;
+  --ash:#9b9188;
+  /* 雕塑图：把图片放到同目录并命名 statue.png 即可自动生效 */
+  --statue:url("assets/statue.png");
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:var(--ink);
+  color:var(--bone);
+  font-family:"Oswald","Arial Narrow",sans-serif;
+  overflow-x:hidden;
+}
+
+/* ============================================================
+   主舞台
+   ============================================================ */
+.stage{
+  position:relative;
+  z-index:1;
+  isolation:isolate;
+  width:100%;
+  min-height:100svh;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  /* 纯黑底：山的天空是透明的，露出来就是黑 */
+  background:transparent;
+}
+
+/* ---------- WebGL 烟雾画布 ---------- */
+#smoke-bg{
+  position:absolute;
+  /* 只占下半屏：从 54% 高度处往下 */
+  left:0;
+  right:0;
+  bottom:0;
+  top:auto;
+  height:52%;
+  z-index:0;
+  background-image:url("assets/mountain-wide.png");
+  background-size:118% auto;
+  background-position:center bottom;
+  background-repeat:no-repeat;
+  background-color:transparent;
+  filter:brightness(1.02) contrast(1.14);
+  /* 上缘渐隐：让山从背景里"长出来"，不是硬切一刀 */
+  -webkit-mask-image:linear-gradient(to bottom,
+    transparent 0%, rgba(0,0,0,.28) 10%, rgba(0,0,0,.7) 26%, #000 44%, #000 78%, rgba(0,0,0,.55) 92%, transparent 100%);
+  mask-image:linear-gradient(to bottom,
+    transparent 0%, rgba(0,0,0,.28) 10%, rgba(0,0,0,.7) 26%, #000 44%, #000 78%, rgba(0,0,0,.55) 92%, transparent 100%);
+  pointer-events:none;
+}
+
+/* 红色半调网点：压在雪山之上，制造印刷拼贴感 */
+.tex-halftone{
+  position:absolute;
+  inset:0;
+  z-index:-1;
+  pointer-events:none;
+  background-color:#9c1119;
+  background-image:
+    radial-gradient(circle at 50% 50%, rgba(0,0,0,.85) 0 2px, transparent 2.7px),
+    radial-gradient(circle at 0% 0%, rgba(0,0,0,.85) 0 2px, transparent 2.7px);
+  background-size:8px 8px;
+  background-position:0 0, 4px 4px;
+  /* 只覆盖右上大片区域：左侧必须露出雪山，文字才读得清 */
+  -webkit-mask-image:radial-gradient(92% 96% at 92% 4%, #000 0 30%, rgba(0,0,0,.62) 52%, transparent 74%);
+  mask-image:radial-gradient(92% 96% at 92% 4%, #000 0 30%, rgba(0,0,0,.62) 52%, transparent 74%);
+  opacity:.62;
+}
+
+/* 放射线：从右上光核向外散开 */
+/* 红圈内不放黑色射线：保留一层极淡的暖光渐变，避免出现黑色放射线 */
+.tex-rays{
+  display:none;
+}
+
+/* ---------- 背景：圆环与弧线 ---------- */
+.rings{position:absolute;inset:0;pointer-events:none}
+.rings svg{position:absolute;inset:0;width:100%;height:100%}
+
+/* ---------- 红色主块：右边那半个圆 ---------- */
+.blood-disc{
+  position:absolute;
+  /* 比烟雾更低一层：烟雾盖在它上面，两者合成同一片背景 */
+  z-index:-3;
+  right:-16%;
+  top: 0%;
+  width:46vw;
+  max-width:660px;
+  aspect-ratio:1;
+  border-radius:50%;
+  /* 静态渐变交给 WebGL 烟雾画布，这里只留一薄层红光 */
+  background:radial-gradient(circle at 40% 40%,
+    rgba(195,17,26,.16) 0%,
+    rgba(141,11,18,.08) 42%,
+    transparent 72%);
+  pointer-events:none;
+}
+
+/* 斜向深红带，压在标题后面 */
+.blood-band{
+  position:absolute;
+  z-index:2;
+  left:-8%;
+  top:36%;
+  width:58%;
+  height:9%;
+  transform:rotate(-6deg);
+  /* 两端彻底淡出：末尾拉到 100%，再叠 mask 羽化，绝不留硬边 */
+  background:linear-gradient(90deg,
+    rgba(141,11,18,0) 0%,
+    rgba(141,11,18,.62) 16%,
+    rgba(141,11,18,.28) 58%,
+    rgba(141,11,18,.10) 84%,
+    rgba(141,11,18,0) 100%);
+  -webkit-mask-image:linear-gradient(90deg,
+    transparent 0%, #000 22%, #000 70%, transparent 100%);
+  mask-image:linear-gradient(90deg,
+    transparent 0%, #000 22%, #000 70%, transparent 100%);
+  filter:blur(6px);
+  pointer-events:none;
+}
+
+/* ============================================================
+   烟雾侵蚀：装饰与线条被雾"啃"掉一部分，时隐时现
+   ============================================================ */
+@keyframes erode-drift {
+  0%   { -webkit-mask-position: 0px 0px;      mask-position: 0px 0px; }
+  50%  { -webkit-mask-position: 130px -74px;  mask-position: 130px -74px; }
+  100% { -webkit-mask-position: 260px -148px; mask-position: 260px -148px; }
+}
+@keyframes erode-breathe {
+  0%,100% { opacity: .96; }
+  42%     { opacity: .38; }
+  74%     { opacity: .74; }
+}
+
+/* 用 SVG 噪声当遮罩：灰度即不透明度 */
+.erode{
+  --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.022' numOctaves='3' seed='7'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='1.35' intercept='-0.22'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E");
+  -webkit-mask-image: var(--noise), linear-gradient(rgba(0,0,0,.34), rgba(0,0,0,.34));
+  mask-image: var(--noise), linear-gradient(rgba(0,0,0,.34), rgba(0,0,0,.34));
+  -webkit-mask-size: 240px 240px, 100% 100%;
+  mask-size: 240px 240px, 100% 100%;
+  -webkit-mask-repeat: repeat, no-repeat;
+  mask-repeat: repeat, no-repeat;
+  -webkit-mask-composite: source-over;
+  mask-composite: add;
+  animation:
+    erode-drift var(--esp, 24s) linear infinite var(--edl, 0s),
+    erode-breathe var(--ebd, 8s) ease-in-out infinite var(--ebdl, 0s);
+  will-change: mask-position, opacity;
+}
+
+.dot.erode, .spark.erode{
+  /* 抵消遮罩造成的灰化：把亮部推回纯白 */
+  filter: brightness(1.55) contrast(1.2);
+
+  /* 小元素：噪声放粗 + 底线抬高，避免被啃成碎屑 */
+  --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.012' numOctaves='2' seed='4'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.85' intercept='0.06'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E");
+  -webkit-mask-size: 300px 300px, 100% 100%;
+  mask-size: 300px 300px, 100% 100%;
+  -webkit-mask-image: var(--noise), linear-gradient(rgba(0,0,0,.62), rgba(0,0,0,.62));
+  mask-image: var(--noise), linear-gradient(rgba(0,0,0,.62), rgba(0,0,0,.62));
+}
+/* 飞鸟：中等强度 */
+.bird.erode{
+  filter: brightness(1.25);
+
+  -webkit-mask-image: var(--noise), linear-gradient(rgba(0,0,0,.48), rgba(0,0,0,.48));
+  mask-image: var(--noise), linear-gradient(rgba(0,0,0,.48), rgba(0,0,0,.48));
+}
+
+/* 圆点：只明灭、不啃形状，保持纯白与锐利。
+   它是画面里唯一的锐利亮点，啃掉会让整页失焦。 */
+.dot.erode{
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+  filter: none !important;
+}
+
+@media (prefers-reduced-motion: reduce){
+  /* 减少动画：不漂移，只留静态的侵蚀痕迹 */
+  .erode{
+    animation: none;
+    opacity: .82;
+    -webkit-mask-position: 40px -20px;
+    mask-position: 40px -20px;
+  }
+}
+
+/* ============================================================
+   中央矩形：与山体穿插
+   ------------------------------------------------------------
+   做法：矩形在山脊"后面"的部分被山遮住，在天空部分露出来。
+   于是它看起来像是插进了山体里，而不是浮在上面。
+   ============================================================ */
+.center-rect{
+  position:absolute;
+  left:50%;
+  top:22%;
+  width:min(46vw,640px);
+  aspect-ratio:4/3;
+  transform:translateX(-50%) rotate(-1.2deg);
+  /* 高于背景与网点，低于雕塑与文字：这样它压在山上面，
+     下半截再被 mask 吃掉，形成"嵌入"的穿插感 */
+  z-index:1;
+
+  /* 穿插感的关键：矩形进入山体的部分被"吃掉"。
+     用一条与山脊走向一致的斜向 mask 边缘，
+     让矩形看起来是从山后面长出来的。 */
+  -webkit-mask-image:linear-gradient(
+    to bottom,
+    #000 0%,
+    #000 46%,
+    rgba(0,0,0,.72) 58%,
+    rgba(0,0,0,.28) 70%,
+    transparent 80%
+  );
+  mask-image:linear-gradient(
+    to bottom,
+    #000 0%,
+    #000 46%,
+    rgba(0,0,0,.72) 58%,
+    rgba(0,0,0,.28) 70%,
+    transparent 80%
+  );
+  pointer-events:none;
+  background:rgba(232,226,218,.10);
+  border:1px solid rgba(232,226,218,.30);
+  /* 内里一层极淡的网点，和红色网点呼应 */
+  background-image:
+    radial-gradient(circle at 50% 50%, rgba(232,226,218,.16) 0 1px, transparent 1.4px);
+  background-size:6px 6px;
+  box-shadow:0 0 0 1px rgba(0,0,0,.25) inset;
+}
+
+/* 矩形的四角标记，强化"这是一个取景框" */
+.center-rect::before,
+.center-rect::after{
+  content:"";
+  position:absolute;
+  width:18px;height:18px;
+  border:1px solid rgba(232,226,218,.62);
+}
+.center-rect::before{ left:-1px; top:-1px; border-right:0; border-bottom:0; }
+.center-rect::after{ right:-1px; bottom:-1px; border-left:0; border-top:0; }
+
+/* ============================================================
+   「聆听神祗」入口
+   ============================================================ */
+.listen{
+  position:absolute;
+  /* 页面下方水平居中 */
+  left:50%;
+  bottom:clamp(20px,3.2vh,40px);
+  transform:translateX(-50%);
+  z-index:9;
+  display:inline-flex;
+  align-items:center;
+  gap:.7em;
+  padding:.85em 1.9em;
+  font-family:"Oswald","Arial Narrow",sans-serif;
+  font-size:clamp(11px,1.05vw,15px);
+  font-weight:600;
+  letter-spacing:.22em;
+  text-transform:uppercase;
+  text-decoration:none;
+  color:#f0e8dd;
+  /* 透明底 + 1px 描边，和血红的斜切带形成对比 */
+  background:rgba(8,4,5,.42);
+  border:1px solid rgba(240,232,221,.34);
+  border-radius:0;
+  cursor:pointer;
+  backdrop-filter:blur(6px);
+  -webkit-backdrop-filter:blur(6px);
+  transition:background-color .25s ease, border-color .25s ease,
+             color .25s ease, transform .25s ease, box-shadow .25s ease;
+}
+.listen::before{
+  /* 左侧一枚小标记，像祭坛上的烛火 */
+  content:"";
+  width:5px;height:5px;
+  border-radius:50%;
+  background:#c3111a;
+  box-shadow:0 0 10px rgba(195,17,26,.9), 0 0 22px rgba(195,17,26,.45);
+  animation:listen-pulse 2.6s ease-in-out infinite;
+}
+@keyframes listen-pulse{
+  0%,100%{ opacity:.55; transform:scale(1); }
+  50%    { opacity:1;   transform:scale(1.35); }
+}
+.listen:hover,
+.listen:focus-visible{
+  background:rgba(154,15,22,.78);
+  border-color:rgba(240,232,221,.72);
+  color:#fff;
+  transform:translateY(-2px);
+  box-shadow:0 10px 34px -12px rgba(195,17,26,.85);
+}
+.listen:active{ transform:translateY(0); }
+.listen:focus-visible{ outline:2px solid #f0e8dd; outline-offset:4px; }
+
+/* 减少动画：不脉冲 */
+@media (prefers-reduced-motion:reduce){
+  .listen::before{ animation:none; }
+  .listen{ transition:none; }
+}
+
+/* ---------- 文字区压暗 ---------- */
+.text-shade{
+  position:absolute;
+  inset:0;
+  z-index:3;
+  pointer-events:none;
+  background:
+    radial-gradient(ellipse 52% 44% at 8% 14%,
+      rgba(6,4,6,.88) 0%,
+      rgba(6,4,6,.66) 42%,
+      rgba(6,4,6,.22) 68%,
+      transparent 88%),
+    radial-gradient(ellipse 46% 30% at 6% 88%,
+      rgba(6,4,6,.86) 0%,
+      rgba(6,4,6,.58) 46%,
+      rgba(6,4,6,.16) 72%,
+      transparent 90%);
+}
+
+/* ---------- 噪点与扫描线 ---------- */- */
+.grain{
+  position:absolute;inset:0;pointer-events:none;
+  opacity:.16;
+  background-image:repeating-linear-gradient(to bottom, rgba(255,255,255,.10) 0 1px, transparent 1px 3px);
+  mix-blend-mode:overlay;
+}
+
+/* ============================================================
+   排版区
+   ============================================================ */
+.type-block{
+  position:relative;
+  z-index:5;
+  isolation:isolate;
+  padding:clamp(24px,3.4vw,56px) clamp(18px,4vw,56px) 0;
+  width:min(62%,980px);
+  container-type:inline-size;
+  container-name:type;
+}
+
+/* ---------- 三行主标题 ---------- */
+.headline{
+  margin:0;
+  font-family:"Anton","Archivo Black",Impact,sans-serif;
+  font-weight:400;
+  text-transform:uppercase;
+  line-height:.82;
+  letter-spacing:-.015em;
+}
+
+/* 第 1、2 行：白 + 少量红字 */
+.line-1{
+  /* 7 个全角字 → 撑满容器宽度（781px ÷ 7 ≈ 111px） */
+  font-size:clamp(22px, 7.7cqw, 112px);
+  color:var(--bone);
+  white-space:nowrap;
+  display:block;
+  margin-top:-.04em;
+}
+.line-2{
+  font-size:clamp(20px, 7.2cqw, 104px);
+  color:#c9c2b8;
+  white-space:nowrap;
+  display:block;
+  margin-top:.10em;
+}
+
+/* 行内红字 */
+.hot{color:var(--blood-hot)}
+
+/* ---------- 幽灵副标题：模糊的重复行 ---------- */
+.ghost{
+  position:relative;
+  margin-top:.06em;
+  font-family:"Anton",Impact,sans-serif;
+  text-transform:uppercase;
+  line-height:.84;
+  font-size:clamp(20px, 7.0cqw, 100px);
+  color:rgba(226,220,212,.30);
+  filter:blur(.6px);
+  letter-spacing:-.01em;
+  pointer-events:none;
+  user-select:none;
+}
+.ghost .hot{color:rgba(195,17,26,.55)}
+
+/* 幽灵下面那行小字 */
+.sub-ghost{
+  margin-top:.28em;
+  font-family:"Oswald",sans-serif;
+  font-weight:500;
+  font-size:clamp(11px,1.35vw,20px);
+  letter-spacing:.10em;
+  color:rgba(226,220,212,.42);
+  text-transform:uppercase;
+}
+
+/* ---------- 底部：词根予生 ---------- */
+.bottom-type{
+  position:relative;
+  z-index:6;
+  /* 底部留出「聆听神祗」按钮的位置，避免遮挡最后一行小字 */
+  padding:clamp(20px,3vw,44px) clamp(18px,4vw,56px) clamp(72px,8vw,104px);
+  margin-top:auto;
+  width:min(64%,1000px);
+  container-type:inline-size;
+  container-name:bottom;
+}
+.anima{
+  margin:0;
+  font-family:"Anton",Impact,sans-serif;
+  text-transform:uppercase;
+  line-height:.9;
+  letter-spacing:-.01em;
+  font-size:clamp(20px, 5.7cqw, 84px);
+  color:var(--bone);
+  white-space:nowrap;
+}
+.anima .stack{
+  display:block;
+  margin-top:.12em;
+  font-size:.52em;
+  color:var(--blood-hot);
+  letter-spacing:.01em;
+}
+.anima .sub{
+  display:block;
+  margin-top:.30em;
+  font-family:"Oswald",sans-serif;
+  font-weight:500;
+  font-size:clamp(10px,1.15vw,15px);
+  letter-spacing:.22em;
+  color:rgba(226,220,212,.45);
+  text-transform:uppercase;
+}
+
+/* ============================================================
+   右侧雕塑
+   ============================================================ */
+.statue-wrap{
+  position:absolute;
+  right:0;
+  bottom:0;
+  /* 高于烟雾，低于所有文字 */
+  z-index:1;
+  /* 按高度定尺寸：宽度由 aspect-ratio 推出 */
+  height:125%;
+  width:auto;
+  aspect-ratio:1600 / 2397;
+  pointer-events:none;
+}
+.statue{
+  width:100%;
+  height:100%;
+  background-image:var(--statue);
+  background-position:center bottom;
+  background-size:contain;
+  background-repeat:no-repeat;
+}
+/* 没有图片时的占位：一尊极简的雕像剪影，只看得出轮廓 */
+.statue-wrap::before{
+  /* 无图时的占位：一尊抱十字的天使雕像，用 SVG 描出可辨识的轮廓 */
+  content:"";
+  position:absolute;
+  inset:auto 4% 0 4%;
+  height:86%;
+  background-image:url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 520'>\
+<g fill='%23efe8dd'>\
+<ellipse cx='150' cy='70' rx='30' ry='36'/>\
+<path d='M120 108 h60 l16 96 h-92 z'/>\
+<path d='M104 204 h92 l20 150 h-132 z'/>\
+<path d='M120 112 L34 214 L52 236 L128 168 Z'/>\
+<path d='M180 112 L268 214 L250 236 L172 168 Z'/>\
+<path d='M138 354 h24 l10 150 h-44 z'/>\
+<path d='M150 120 L74 92 L84 52 L162 84 Z' opacity='.9'/>\
+<path d='M150 84 L226 58 L236 96 L162 120 Z' opacity='.9'/>\
+</g>\
+<g stroke='%23efe8dd' stroke-width='12' fill='none' stroke-linecap='square'>\
+<path d='M150 40 L150 470'/>\
+<path d='M96 150 L204 150'/>\
+</g>\
+</svg>");
+  background-size:contain;
+  background-position:center bottom;
+  background-repeat:no-repeat;
+  opacity:0;
+  filter:drop-shadow(0 0 40px rgba(0,0,0,.85));
+}
+/* 用 body 上加类来切换：有图时隐藏占位 */
+body.has-statue .statue-wrap::before{display:none}
+body.no-statue .statue{background-image:none}
+body.no-statue .statue-wrap::before{opacity:1}
+
+/* 雕塑左侧的暗部，让字和图分开 */
+
+
+/* ============================================================
+   装饰：白圆点、星芒、飞鸟、细线
+   ============================================================ */
+.orbit{
+  position:absolute;inset:0;z-index:4;pointer-events:none;
+}
+.orbit svg{position:absolute;inset:0;width:100%;height:100%}
+
+.dot{
+  position:absolute;
+  width:clamp(10px,1.5vw,22px);
+  aspect-ratio:1;
+  border-radius:50%;
+  background:var(--bone);
+  box-shadow:0 0 0 clamp(2px,0.35vw,5px) rgba(5,3,5,.9), 0 0 0 clamp(3px,0.5vw,7px) rgba(242,236,227,.55);
+  z-index:8;
+}
+
+.spark{
+  position:absolute;
+  color:var(--bone);
+  font-size:clamp(12px,1.8vw,26px);
+  line-height:1;
+  z-index:8;
+  text-shadow:0 0 14px rgba(195,17,26,.55);
+}
+
+.bird{
+  position:absolute;
+  z-index:8;
+  width:clamp(14px,2vw,30px);
+}
+.bird svg{width:100%;height:auto;display:block}
+
+/* ============================================================
+   响应式：窄屏把雕塑缩到右下，文字占满宽度
+   ============================================================ */
+@media (max-width: 900px){
+  .type-block{
+    width:100%;
+    max-width:100%;
+    padding:clamp(22px,6vw,40px) clamp(14px,4.5vw,24px) 0;
+  }
+  .bottom-type{
+    width:100%;
+    max-width:100%;
+    /* 手机：底部留出按钮的高度 */
+    padding:0 clamp(14px,4.5vw,24px) clamp(88px,22vw,110px);
+  }
+
+  /* 手机上的按钮：居中放在最底部 */
+  .listen{
+    left:50%;
+    bottom:clamp(18px,4vw,28px);
+    transform:translateX(-50%);
+    font-size:clamp(10px,2.7vw,13px);
+    padding:.75em 1.5em;
+    letter-spacing:.18em;
+  }
+  .listen:hover,
+  .listen:focus-visible{
+    transform:translateX(-50%) translateY(-2px);
+  }
+  .listen:active{
+    transform:translateX(-50%);
+  }
+
+  /* 手机上 nowrap 会撑爆，允许换行并放大字号 */
+  .line-1,.line-2{
+    white-space:normal;
+    font-size:clamp(26px, 8.2vw, 44px);
+    line-height:.92;
+  }
+  .line-2{font-size:clamp(23px, 7.3vw, 40px)}
+
+  /* 幽灵行缩小并降低对比，避免与主标题打架 */
+  .ghost{
+    font-size:clamp(15px, 4.6vw, 24px);
+    margin-top:.34em;
+    color:rgba(226,220,212,.22);
+  }
+  .sub-ghost{
+    font-size:clamp(9px,2.8vw,13px);
+    margin-top:.5em;
+  }
+
+  .anima{
+    white-space:normal;
+    font-size:clamp(22px, 7.4vw, 40px);
+  }
+  .anima .stack{font-size:.46em}
+
+  .blood-disc{width:82vw;right:-30%;top:1%}
+  .blood-band{width:100%;top:40%;height:7%}
+
+  /* 雕塑缩到右下角，完全不压文字区 */
+  /* 手机：背景更暗、雕塑更亮，避免两者糊在一起 */
+  #smoke-bg{
+    filter:grayscale(1) contrast(1.1) brightness(.46);
+  }
+  .statue-wrap .statue{
+    filter:brightness(1.22) contrast(1.08) drop-shadow(0 0 30px rgba(0,0,0,.9));
+  }
+  .tex-halftone{ opacity:.6; }
+  .text-shade{
+    background:
+      radial-gradient(ellipse 96% 26% at 50% 6%,
+        rgba(6,4,6,.92) 0%, rgba(6,4,6,.68) 50%, transparent 92%),
+      radial-gradient(ellipse 96% 18% at 50% 96%,
+        rgba(6,4,6,.9) 0%, rgba(6,4,6,.6) 52%, transparent 94%);
+  }
+
+  /* 手机上也把雕塑放大：按高度驱动，撑到 78svh，
+     右上角露出头部，底部踩在画面下缘 */
+  .statue-wrap{
+    position:absolute;
+    width:auto;
+    height:78svh;
+    aspect-ratio:1600 / 2397;
+    right:-16%;
+    bottom:-6%;
+    opacity:.55;
+    z-index:0;
+  }
+
+  /* 装饰点在手机上减半，别太吵 */
+  .dot:nth-of-type(n+4){display:none}
+  .spark:nth-of-type(n+3){display:none}
+}
+
+/* 转场：深色带从底部升起铺满 → 跳转 */
+.page-wipe{
+  position:fixed;inset:0;z-index:9999;
+  pointer-events:none;overflow:hidden;visibility:hidden;
+}
+.page-wipe.on{ visibility:visible; }
+.page-wipe-band{
+  position:absolute;left:0;right:0;
+  background:#050305;bottom:0;height:0;
+  will-change:height;
+}
+
+
+
+/* ============================================================
+   第 2 部分：书籍页样式（原 books.html）
+   ============================================================ */
+
+:root{
+  --ink:#050305;
+  --bone:#f2ece3;
+  --blood:#8d0b12;
+  --blood-hot:#c3111a;
+
+  --text:#f2ece3;
+  --muted:rgba(242,236,227,.68);
+  --dim:rgba(242,236,227,.44);
+  --border:rgba(242,236,227,.12);
+  --glass:rgba(255,255,255,.05);
+}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--ink);color:var(--text);
+  font-family:"Inter","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;overflow-x:hidden;
+}
+.skip{position:absolute;left:-9999px;top:0;z-index:99;background:var(--bone);color:var(--ink);padding:12px 20px;font-size:14px;text-decoration:none}
+.skip:focus{left:12px;top:12px}
+a:focus-visible,button:focus-visible{outline:2px solid var(--bone);outline-offset:3px}
+
+/* ==================== 导航 ==================== */
+.nav{
+  position:fixed;top:0;left:0;right:0;z-index:50;isolation:isolate;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:20px 84px 20px clamp(16px,4vw,48px);
+  border-bottom:1px solid transparent;
+  transition:border-color .3s ease;
+}
+.nav.scrolled{border-bottom-color:var(--border)}
+.nav.scrolled::before{
+  content:"";position:absolute;inset:0;z-index:-1;
+  background:rgba(5,3,5,.86);
+  -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+}
+.brand{
+  display:flex;align-items:center;gap:10px;
+  font-family:"Sora",sans-serif;font-weight:700;font-size:14px;
+  letter-spacing:.18em;text-transform:uppercase;color:var(--bone);text-decoration:none;z-index:2;
+}
+.brand::before{
+  content:"";width:18px;height:18px;flex:0 0 auto;
+  border:1px solid rgba(242,236,227,.5);
+  background:linear-gradient(135deg,var(--blood-hot),transparent 72%);
+}
+.nav-links{display:flex;gap:clamp(18px,2.6vw,36px)}
+.nav-links a{
+  color:var(--muted);text-decoration:none;font-size:13px;letter-spacing:.06em;
+  position:relative;padding:4px 0;transition:color .2s ease;
+}
+.nav-links a::after{content:"";position:absolute;left:0;bottom:0;width:0;height:1px;background:var(--bone);transition:width .25s ease}
+.nav-links a:hover,.nav-links a:focus-visible{color:var(--bone)}
+.nav-links a:hover::after,.nav-links a:focus-visible::after{width:100%}
+.nav-cta{
+  padding:10px 20px;border:1px solid var(--border);border-radius:8px;
+  background:var(--glass);color:var(--bone);text-decoration:none;
+  font-size:12px;letter-spacing:.1em;text-transform:uppercase;
+  transition:background-color .2s ease,border-color .2s ease,transform .2s ease;
+}
+.nav-cta:hover,.nav-cta:focus-visible{background:rgba(242,236,227,.12);border-color:rgba(242,236,227,.34);transform:translateY(-1px)}
+@media (max-width:640px){.nav-links{display:none}}
+
+/* ============================================================
+   三部圣书 —— 立体书块
+   ============================================================
+   每本书是一个 3D 盒子：
+     · 书脊（spine）— 正面，竖着，印书名
+     · 封面（cover）— 顶面，向后倾斜 74°，露出封面图案
+     · 切口（pages）— 右侧窄面，露出纸页
+   整组放在 perspective 容器里，模拟从斜上方俯视。
+   ============================================================ */
+.books-sec{
+  position:relative;
+  z-index:2;
+  /* 整屏：铭文与标题成组在上，书由画布画在下方中央 */
+  min-height:100svh;
+  display:flex;flex-direction:column;
+  justify-content:flex-start;
+  padding: clamp(84px,11vh,130px) clamp(20px,5vw,64px) clamp(24px,4vh,48px);
+  max-width:1160px;margin:0 auto;
+  /* 文字层不拦截画布交互，点击能落到书上 */
+  pointer-events:none;
+}
+/* 标题与铭文保持紧凑，不撑满整屏 */
+.books-sec .section-head{
+  margin-top: clamp(8px,1.2vh,16px);
+  margin-bottom: 0;
+}
+.books-sec .litany,
+.books-sec .section-head{ pointer-events:none; }
+.litany{
+  position:relative;
+  z-index:5;
+  margin-bottom:clamp(14px,2.4vh,32px);
+  text-align:center;
+}
+.litany p{
+  margin:0;
+  font-family:"Noto Serif SC",serif;
+  font-weight:600;
+  font-size:clamp(15px,2.35vw,30px);
+  line-height:1.86;
+  letter-spacing:.06em;
+  color:var(--bone);
+  text-shadow:0 2px 26px rgba(0,0,0,.9);
+}
+/* 第二行染红，呼应血的主题 */
+.litany p .hot{
+  color:var(--blood-hot);
+  text-shadow:0 0 30px rgba(195,17,26,.55), 0 2px 18px rgba(0,0,0,.9);
+}
+/* 单行淡出，制造"渐隐"的呼吸感 */
+.litany p:first-child{opacity:.94}
+.litany p:nth-child(2){opacity:.98}
+.litany p:last-child{opacity:.90}
+
+.section-head{
+  display:flex;align-items:baseline;justify-content:space-between;
+  gap:20px;margin-bottom:clamp(44px,6vh,80px);flex-wrap:wrap;
+  /* 标题不参与 3D 层叠，永远压在书块之上 */
+  position:relative;z-index:5;
+}
+.section-head h2{
+  margin:0;font-family:"Noto Serif SC",serif;font-weight:700;
+  font-size:clamp(24px,3.4vw,40px);letter-spacing:-.01em;color:var(--bone);
+}
+.section-head p{margin:0;font-size:13px;color:var(--dim);letter-spacing:.04em}
+
+.stage{
+  perspective: 1600px;
+  perspective-origin: 50% 46%;
+  display:flex;flex-direction:column;align-items:center;
+  /* 等距：间距略大于封面高度（52-72px），三本节奏一致 */
+  gap: clamp(78px,9.8vh,100px);
+  padding-top: 0;
+}
+
+/* 一本书 */
+.book{
+  position:relative;
+  width: min(680px, 90%);
+  display:block;
+  text-decoration:none;
+  color:inherit;
+  border:0;background:none;padding:0;
+  font: inherit;
+  cursor:pointer;
+  /* 相机俯角：让顶面可见 */
+  transform-style: preserve-3d;
+  transform: none;
+  transition: transform .5s cubic-bezier(.2,.85,.25,1), filter .4s ease;
+  will-change: transform;
+}
+.book:hover,
+.book:focus-visible{
+  transform: translateY(-10px) scale(1.012);
+  filter: brightness(1.1);
+}
+.book:active{ transform: translateY(-4px) scale(1.005); }
+
+/* 3D 主体 */
+.bk{
+  position:relative;
+  transform-style: preserve-3d;
+  height: var(--thick);
+}
+
+/* —— 书脊：正面 —— */
+.spine{
+  position:absolute;inset:0;
+  display:flex;align-items:center;
+  gap: clamp(10px,1.8vw,26px);
+  padding: 0 clamp(14px,2.4vw,30px);
+  background: var(--spine-bg);
+  /* 书脊右端是圆的（书口），左端是方的（书脊） */
+  border-radius: 2px 5px 5px 2px;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.30) inset,
+    0 -1px 0 rgba(255,255,255,.10) inset,
+    0 -3px 6px rgba(0,0,0,.38) inset,
+    0 16px 32px -18px rgba(0,0,0,.95);
+  overflow:hidden;
+}
+/* 书脊上下缘的高光/暗部 */
+.spine::before{
+  content:"";position:absolute;left:0;right:0;top:0;height:30%;
+  background:linear-gradient(to bottom,rgba(255,255,255,.22),transparent);
+  pointer-events:none;
+}
+.spine::after{
+  content:"";position:absolute;left:0;right:0;bottom:0;height:34%;
+  background:linear-gradient(to bottom,transparent,rgba(0,0,0,.45));
+  pointer-events:none;
+}
+/* 纸页堆叠细纹 */
+.pages-lines{
+  position:absolute;inset:0;pointer-events:none;
+  background-image:repeating-linear-gradient(to bottom,
+    rgba(0,0,0,.20) 0 1px,
+    transparent 1px 3px);
+  opacity:.42;
+  mix-blend-mode:multiply;
+}
+
+.sp-author{
+  position:relative;z-index:2;
+  font-family:"Inter",sans-serif;
+  font-size:clamp(8px,1.05vw,12px);
+  letter-spacing:.13em;text-transform:uppercase;
+  white-space:nowrap;opacity:.9;
+}
+.sp-title{
+  position:relative;z-index:2;
+  font-family:"Noto Serif SC","Sora",serif;font-weight:600;
+  font-size:clamp(13px,2.1vw,25px);
+  letter-spacing:.02em;white-space:nowrap;
+}
+.sp-mark{
+  position:relative;z-index:2;margin-left:auto;
+  display:flex;align-items:center;gap:8px;
+  font-family:"Sora",sans-serif;
+  font-size:clamp(8px,0.95vw,11px);
+  letter-spacing:.2em;text-transform:uppercase;
+  opacity:.8;white-space:nowrap;
+}
+.sp-mark i{
+  width:clamp(14px,1.8vw,20px);height:clamp(14px,1.8vw,20px);
+  border:1px solid currentColor;border-radius:2px;
+  display:inline-block;position:relative;
+}
+.sp-mark i::before,
+.sp-mark i::after{
+  content:"";position:absolute;background:currentColor;opacity:.8;
+}
+.sp-mark i::before{left:2px;right:2px;top:50%;height:1px}
+.sp-mark i::after{top:2px;bottom:2px;left:50%;width:1px}
+
+/* —— 封面：顶面 ——
+   用 clip-path 画梯形，不用 3D 旋转。
+   上边略窄 = 透视收缩；右下角留一个斜切 = 书角。 */
+.cover{
+  position:absolute;
+  left:0;right:0;
+  bottom:100%;
+  height: var(--depth);
+  background: var(--cover-bg);
+  /* 梯形：上边内收 2.5%，下边贴住书脊 */
+  clip-path: polygon(
+    2.5% 0%,
+    97.5% 0%,
+    100% 100%,
+    0% 100%
+  );
+  border-radius:0;
+  overflow:hidden;
+  transform: none;
+}
+.cover::before{
+  content:"";position:absolute;inset:0;
+  background-image: var(--cover-pattern);
+  opacity: var(--cover-pattern-op,.55);
+  mix-blend-mode: var(--cover-blend,normal);
+}
+/* 真画的做旧层：每本可用 --cover-filter 单独调 */
+.cover{
+  filter: var(--cover-filter, saturate(.72) contrast(1.06) brightness(.85));
+}
+/* 靠近书脊处压暗，形成转折 */
+.cover::after{
+  content:"";position:absolute;inset:0;
+  background:linear-gradient(to top,
+    rgba(0,0,0,.68) 0%,
+    rgba(0,0,0,.30) 26%,
+    rgba(0,0,0,.06) 58%,
+    transparent 82%);
+}
+.cover-shine{
+  position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(102deg,
+    rgba(255,255,255,.22) 0%,
+    transparent 26%,
+    transparent 64%,
+    rgba(255,255,255,.14) 100%);
+}
+
+/* —— 切口：右侧纸页 —— */
+.edge{
+  position:absolute;
+  top:0;right:0;
+  width: var(--edge-w, 13px);
+  height: var(--thick);
+  background:
+    repeating-linear-gradient(to bottom,
+      rgba(242,236,227,.95) 0 1px,
+      rgba(196,186,172,.72) 1px 2px);
+  clip-path: polygon(0 0, 100% 6%, 100% 94%, 0 100%);
+  opacity:.92;
+  box-shadow:-2px 0 10px -4px rgba(0,0,0,.75) inset;
+}
+
+/* ==================== 三本的皮色 ==================== */
+.bk-1{
+  --thick: clamp(66px,7.6vw,90px);
+  --depth: clamp(54px,6vw,74px);
+  --spine-bg: linear-gradient(180deg,#faf4ea 0%,#efe7db 52%,#ddd3c4 100%);
+  --cover-filter: saturate(.68) contrast(1.08) brightness(1.05);
+  --cover-bg:
+    linear-gradient(150deg, rgba(195,17,26,.34) 0%, rgba(29,6,8,.44) 100%),
+    url("assets/cover-sanctuary.jpg") center 52%/cover no-repeat;
+  --cover-pattern: radial-gradient(circle at 50% 50%, rgba(0,0,0,.55) 0 1.4px, transparent 1.8px);
+  --cover-pattern-op:.5;
+  --cover-blend:multiply;
+  color:#231a1c;
+}
+
+.bk-2{
+  --thick: clamp(70px,7.8vw,94px);
+  --depth: clamp(56px,6.2vw,76px);
+  --spine-bg: linear-gradient(180deg,#b3161f 0%,#8d0b12 54%,#5e0509 100%);
+  --cover-filter: saturate(.62) contrast(1.12) brightness(.78);
+  --cover-bg:
+    linear-gradient(150deg, rgba(42,6,8,.5) 0%, rgba(141,11,18,.42) 55%, rgba(195,17,26,.35) 100%),
+    url("assets/cover-hymn.jpg") center 50%/cover no-repeat;
+  --cover-pattern:
+    repeating-conic-gradient(from 0deg at 40% 40%, rgba(0,0,0,.30) 0deg 8deg, transparent 8deg 16deg),
+    radial-gradient(circle at 70% 30%, rgba(242,236,227,.22) 0 30%, transparent 62%);
+  --cover-pattern-op:.62;
+  --cover-blend:overlay;
+  color:#fbf3ea;
+}
+
+.bk-3{
+  --thick: clamp(66px,7.6vw,90px);
+  --depth: clamp(54px,6vw,74px);
+  --spine-bg: linear-gradient(180deg,#1b171a 0%,#0f0c0e 56%,#050305 100%);
+  --cover-filter: saturate(.5) contrast(1.15) brightness(.55);
+  --cover-bg:
+    linear-gradient(150deg, rgba(10,7,9,.55) 0%, rgba(42,31,36,.5) 50%, rgba(91,67,76,.42) 100%),
+    url("assets/cover-sleep.jpg") center 50%/cover no-repeat;
+  --cover-pattern:
+    repeating-linear-gradient(-28deg, rgba(242,236,227,.18) 0 1px, transparent 1px 8px),
+    radial-gradient(circle at 30% 70%, rgba(195,17,26,.5) 0 22%, transparent 58%);
+  --cover-pattern-op:.7;
+  --cover-blend:screen;
+  color:#efe7db;
+}
+
+/* 手机：缩一点，保证三本都在一屏内 */
+@media (max-width:640px){
+  .books-sec{
+    min-height:100svh;
+    justify-content:flex-end;
+    padding:clamp(88px,12vh,116px) 16px clamp(14px,2.4vh,26px);
+  }
+  .litany{
+    margin-bottom:clamp(20px,3.6vh,38px);
+  }
+  .litany p{
+    font-size:clamp(14px,4.15vw,19px);
+    line-height:1.92;
+    letter-spacing:.03em;
+  }
+  .section-head{
+    /* 必须大于封面高度，否则标题会被第一本的封面盖住 */
+    margin-bottom:clamp(56px,15vw,76px);
+  }
+  /* 手机：间距贴着封面高度，紧凑成摞 */
+  .stage{perspective:900px;gap:clamp(64px,17vw,86px);padding-top:0}
+  .book{width:94%}
+  .bk-1{--thick:clamp(50px,12vw,64px);--depth:clamp(48px,12vw,72px)}
+  .bk-2{--thick:clamp(56px,13.4vw,72px);--depth:clamp(54px,13.4vw,80px)}
+  .bk-3{--thick:clamp(44px,10.4vw,56px);--depth:clamp(42px,10.4vw,62px)}
+  .sp-mark{display:none}
+  .sp-title{font-size:clamp(12px,3.6vw,17px)}
+  .sp-author{font-size:clamp(7px,2.2vw,10px)}
+}
+
+/* ============================================================
+   详情页：点击书后全屏展开 —— 左大书影 / 右文字（参考 Stripe Press）
+   ============================================================ */
+.modal{
+  position:fixed;inset:0;
+  z-index:100;
+  /* 透明：书由底层主画布渲染，这里只承载文字 */
+  background:transparent;
+  opacity:0;visibility:hidden;
+  transition:opacity .4s ease,visibility .4s ease;
+  overflow-y:auto;
+  overflow-x:hidden;
+  /* 只让文字区域可点，空处让给画布拖拽 */
+  pointer-events:none;
+}
+.modal > *{ pointer-events:auto; }
+/* 文字面板自己带底色，保证可读 */
+.detail-grid{
+  background:transparent;
+}
+.modal.open{opacity:1;visibility:visible}
+
+/* 详情页顶栏 */
+.detail-top{
+  position:sticky;top:0;z-index:102;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:18px clamp(18px,4vw,48px);
+  border-bottom:1px solid var(--border);
+  background:rgba(5,3,5,.82);
+  -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+}
+.detail-brand{
+  font-family:"Sora",sans-serif;font-weight:700;font-size:13px;
+  letter-spacing:.18em;text-transform:uppercase;color:var(--bone);
+}
+.detail-close{
+  display:inline-flex;align-items:center;gap:9px;
+  padding:9px 18px;border:1px solid var(--border);border-radius:8px;
+  background:var(--glass);color:var(--bone);
+  font-size:12px;letter-spacing:.1em;cursor:pointer;
+  transition:background-color .2s ease,border-color .2s ease;
+}
+.detail-close:hover,.detail-close:focus-visible{
+  background:rgba(242,236,227,.12);border-color:rgba(242,236,227,.34);
+}
+.detail-close svg{width:14px;height:14px}
+
+/* 左右两栏 */
+.detail-grid{
+  position:relative;
+  z-index:101;
+  pointer-events:none;   /* 只有文字面板本身可点 */
+  display:grid;
+  grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+  gap: clamp(36px,6vw,96px);
+  align-items:center;
+  max-width:1360px;margin:0 auto;
+  padding: clamp(40px,6vh,80px) clamp(20px,5vw,64px) clamp(60px,9vh,110px);
+  min-height: calc(100svh - 62px);
+}
+
+/* ---- 左：立起来的大书影 ---- */
+.detail-visual{
+  display:flex;align-items:center;justify-content:center;
+  perspective:1400px;
+}
+.detail-stage3d{
+  position:relative;
+  width:100%;
+  aspect-ratio: 0.84;
+  max-width:600px;
+  /* 只是占位：书由底层 canvas 渲染，这里不能截住鼠标 */
+  pointer-events: none;
+}
+.detail-stage3d canvas{display:block;width:100%!important;height:100%!important}
+
+/* 旧的 CSS 假 3D 全部作废 */
+.detail-face-text .eng{
+  display:block;margin-top:10px;
+  font-family:"Sora",sans-serif;font-weight:500;
+  font-size:clamp(10px,1.15vw,14px);letter-spacing:.06em;opacity:.85;
+}
+/* 书脊：左侧一条 */
+
+/* 书口：右侧纸页 */
+
+
+/* ---- 右：文字 ---- */
+.detail-copy{
+  max-width:38em;
+  position:relative;
+  z-index:101;
+  pointer-events:auto;              /* 压在主画布之上 */
+  padding: clamp(16px,2vw,28px);
+  background: linear-gradient(90deg, transparent 0%, rgba(5,3,5,.62) 10%, rgba(5,3,5,.80) 100%);
+  border-radius: 12px;
+}
+.detail-vol{
+  font-family:"Sora",sans-serif;font-size:11px;letter-spacing:.28em;
+  text-transform:uppercase;color:var(--blood-hot);margin-bottom:22px;
+}
+.detail-copy h3{
+  margin:0 0 14px;
+  font-family:"Noto Serif SC",serif;font-weight:700;
+  font-size:clamp(26px,3.5vw,44px);line-height:1.36;
+  letter-spacing:-.01em;color:var(--bone);
+}
+.detail-author{
+  font-family:"Noto Serif SC",serif;font-style:italic;
+  font-size:clamp(14px,1.5vw,18px);color:var(--muted);
+  margin-bottom:clamp(22px,3vh,36px);
+}
+.detail-rule{width:46px;height:1px;background:var(--blood-hot);margin:0 0 clamp(22px,3vh,34px)}
+.detail-body{
+  margin:0 0 clamp(28px,4vh,42px);
+  font-size:clamp(13px,1.12vw,15px);line-height:2.05;
+  color:rgba(242,236,227,.80);
+}
+.detail-body strong{color:var(--bone);font-weight:600}
+.detail-buy-row{
+  display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+  padding-top:22px;border-top:1px solid var(--border);
+}
+.detail-price{
+  font-family:"Sora",sans-serif;font-weight:700;
+  font-size:clamp(20px,2.2vw,26px);color:var(--bone);
+}
+.detail-buy{
+  padding:13px 26px;border-radius:8px;border:1px solid rgba(195,17,26,.5);
+  background:linear-gradient(135deg,var(--blood),var(--blood-hot));
+  color:#fff5f2;font-size:13px;letter-spacing:.06em;cursor:pointer;
+  transition:transform .2s ease,box-shadow .2s ease;
+}
+.detail-buy:hover,.detail-buy:focus-visible{
+  transform:translateY(-2px);box-shadow:0 12px 28px -14px rgba(195,17,26,.9);
+}
+
+/* 手机：单列，书影在上 */
+@media (max-width:860px){
+  /* 窄屏：书在上（画布已经把它抬高了），文字在下 */
+  .detail-grid{
+    grid-template-columns:1fr;
+    gap:0;
+    padding: 0 clamp(16px,4vw,24px) clamp(24px,4vh,40px);
+    min-height:100svh;
+    align-items:end;
+  }
+  .detail-visual{
+    display:none;          /* 书由画布渲染，这里不占位 */
+  }
+  .detail-copy{
+    max-width:none;
+    width:100%;
+    padding: clamp(16px,3vw,24px);
+    background: rgba(9,5,7,.90);
+  }
+  .detail-copy h3{ font-size:clamp(22px,6vw,30px); }
+  .detail-body{ line-height:1.9; font-size:14px; }
+}
+
+@media (prefers-reduced-motion:reduce){
+  .detail-stage3d{ animation:none !important; }
+}
+
+/* ==================== 入场 ==================== */
+.reveal{opacity:0;transform:translateY(20px);transition:opacity .6s ease,transform .6s ease}
+.reveal.in{opacity:1;transform:none}
+
+@media (prefers-reduced-motion:reduce){
+  .reveal{opacity:1;transform:none;transition:none}
+  html{scroll-behavior:auto}
+  .eyebrow i,.scroll-cue{animation:none}
+  .book,.book:hover,.book:focus-visible{transition:none;transform:rotateX(6deg)}
+  .modal,.modal-card{transition:none}
+}
+
+/* ===== TRANSITION MOTION (appended) ===== */
+/* ============================================================
+   点击书 → 其余淡出、被点书放大、背景换色、书翻转立起、文字淡入
+   插入于样式末尾，优先级最高
+   ============================================================ */
+
+.books-sec{ transition: background-color .9s ease }
+body.transitioning .books-sec{
+  background: var(--trans-bg, #2a1f24);
+}
+
+.stage .book{
+  transition:
+    opacity .55s ease,
+    transform .75s cubic-bezier(.2,.85,.25,1),
+    filter .55s ease;
+}
+body.transitioning .stage .book:not(.picked){
+  opacity:0;
+  transform: scale(.86) translateY(18px);
+  pointer-events:none;
+}
+body.transitioning .stage .book.picked{
+  transform: scale(1.06) translateY(-8px);
+  filter: brightness(1.18);
+  z-index:20;
+}
+body.transitioning .litany,
+body.transitioning .section-head{
+  opacity:0;
+  transform: translateY(-14px);
+  transition: opacity .5s ease, transform .5s ease;
+  pointer-events:none;
+}
+
+/* 详情页：黑 → 该书封面衍生色（覆盖前面的纯黑规则） */
+.modal{
+  transition: opacity .4s ease, visibility .4s ease, background-color 1.1s ease;
+}
+.modal.open{
+  /* 透明：书在底层主画布上，这里只承载文字 */
+  background-color: transparent !important;
+  background-image:
+    radial-gradient(120% 90% at 22% 18%,
+      var(--detail-glow, rgba(195,17,26,.32)) 0%,
+      transparent 62%) !important;
+}
+
+/* 浅底：顶栏与文字改深色 */
+.modal.open .detail-top{
+  background: rgba(5,3,5,.78);
+  border-bottom-color: rgba(242,236,227,.12);
+}
+.modal.open .detail-brand{ color:#f2ece3 }
+.modal.open .detail-close{
+  border-color: rgba(242,236,227,.20);
+  background: rgba(255,255,255,.06);
+  color:#f2ece3;
+}
+.modal.open .detail-copy > *{
+  animation: detail-in .7s cubic-bezier(.2,.85,.25,1) both;
+}
+@keyframes detail-in{
+  from{ opacity:0; transform:translateY(18px); filter:blur(4px) }
+  to  { opacity:1; transform:none;             filter:blur(0) }
+}
+.modal.open .detail-vol{ color:var(--blood) }
+.modal.open .detail-copy h3{ color:#f2ece3 }
+.modal.open .detail-author{ color:rgba(242,236,227,.68) }
+.modal.open .detail-rule{ background:var(--blood) }
+.modal.open .detail-body{ color:rgba(242,236,227,.80) }
+.modal.open .detail-body strong{ color:#f2ece3 }
+.modal.open .detail-price{ color:#f2ece3 }
+.modal.open .detail-buy-row{ border-top-color:rgba(242,236,227,.14) }
+
+/* 立体书：从躺平翻转立起（覆盖旧的固定角度） */
+
+.modal.open 
+
+@media (prefers-reduced-motion:reduce){
+  .books-sec,
+  .stage .book,
+  body.transitioning .litany,
+  body.transitioning .section-head,
+  .modal{ transition:none }
+  .modal.open .detail-copy > *{ animation:none; opacity:1; transform:none; filter:none }
+  
+  .modal.open 
+}
+
+
+/* ===== 过渡：整页淡出到黑 ===== */
+body.transitioning .books-sec{
+  /* 背景压暗，为详情页登场铺垫 */
+  background: radial-gradient(60% 50% at 50% 55%, rgba(141,11,18,.20) 0%, transparent 70%), #050305;
+  transition: background .55s ease;
+}
+/* 进入详情：列表页的文字全部退场，只留画布上的书 */
+body.transitioning .litany,
+body.transitioning .section-head,
+body.transitioning .stage3d .hint,
+body.detail-open .litany,
+body.detail-open .section-head,
+body.detail-open .stage3d .hint{
+  opacity: 0;
+  transition: opacity .28s ease;
+  pointer-events: none;
+}
+
+/* 详情页登场：从中黑淡入 + 轻微上浮 */
+.modal{
+  transition: opacity .42s cubic-bezier(.4,0,.2,1), visibility .42s;
+}
+.modal.open .detail-stage3d{
+  animation: fly-in 0.85s cubic-bezier(.25,.9,.3,1) both;
+}
+@keyframes fly-in{
+  0%   { opacity:0; transform: translateY(12px) scale(.97) rotate(-0.5deg); filter: blur(2px) }
+  60%  { opacity:1; filter: blur(0) }
+  100% { opacity:1; transform: translateY(0) scale(1) rotate(0deg); filter: blur(0) }
+}
+
+/* 右栏文字：逐条延迟淡入 */
+.modal.open .detail-copy > *{
+  animation: copy-in .62s cubic-bezier(.2,.85,.25,1) both;
+}
+.modal.open .detail-copy > :nth-child(1){ animation-delay: .52s }
+.modal.open .detail-copy > :nth-child(2){ animation-delay: .58s }
+.modal.open .detail-copy > :nth-child(3){ animation-delay: .64s }
+.modal.open .detail-copy > :nth-child(4){ animation-delay: .69s }
+.modal.open .detail-copy > :nth-child(5){ animation-delay: .74s }
+.modal.open .detail-copy > :nth-child(6){ animation-delay: .80s }
+@keyframes copy-in{
+  from{ opacity:0; transform: translateY(16px); filter: blur(3px) }
+  to  { opacity:1; transform: none; filter: blur(0) }
+}
+
+@media (prefers-reduced-motion: reduce){
+  .modal.open .detail-stage3d,
+  .modal.open .detail-copy > *{ animation: none !important; opacity:1; transform:none; filter:none }
+}
+
+/* ============================================================
+   过渡：深色带扫过（参考 awwwards noho）
+   —— 带子从底部升起铺满，再向上退出，扫过之处内容显现
+   ============================================================ */
+.wipe{
+  position:fixed;inset:0;z-index:200;
+  pointer-events:none;
+  overflow:hidden;
+  visibility:hidden;
+}
+.wipe.on{ visibility:visible; }
+
+.wipe-band{
+  position:absolute;left:0;right:0;
+  background:#0a0a0a;
+  /* 初始：贴着底部，高度 0 */
+  bottom:0;
+  height:0;
+  will-change: height, top, bottom;
+}
+
+/* 第二阶段：带子收缩到顶部 */
+.wipe.out .wipe-band{
+  bottom:auto;
+  top:0;
+}
+
+/* ===== 3D 书舞台（three.js 真实模型） ===== */
+/* 单画布：铺满视口，位于所有内容之下 */
+/* 单画布：铺满视口，位于内容之下 */
+.stage3d{
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  z-index: 0;
+}
+.stage3d canvas{
+  display:block;
+  width:100%!important;
+  height:100%!important;
+  cursor: pointer;        /* 列表态：可点书 */
+  pointer-events: auto;   /* 必须能接事件，否则书点不到 */
+}
+body.detail-open .stage3d canvas{
+  cursor: grab;
+}
+body.detail-open .stage3d canvas:active{ cursor: grabbing; }
+.stage3d .hint{
+  position:absolute;left:50%;bottom:-6px;transform:translateX(-50%);
+  font-size:10px;letter-spacing:.22em;text-transform:uppercase;
+  color:rgba(242,236,227,.36);pointer-events:none;white-space:nowrap;
+}
+/* 隐藏原来的 CSS 书块（数据仍保留给 JS） */
+.stage .book{display:none!important}
+
+
+/* ============================================================
+   入场转场：深色带（承接首页）
+   ============================================================ */
+.page-wipe{
+  position:fixed;inset:0;z-index:9999;
+  pointer-events:none;overflow:hidden;
+  background:#050305;
+}
+.page-wipe-band{
+  position:absolute;left:0;right:0;top:0;
+  background:#050305;
+  height:0;
+  will-change:height;
+}
+.page-wipe-band.full{ height:100%; }
+
+
+
+/* ============================================================
+   第 3 部分：两页共存
+   ============================================================ */
+.scene{
+  position:fixed;inset:0;
+  opacity:0;visibility:hidden;
+  transition:opacity .45s ease, visibility .45s;
+  overflow:hidden;
+}
+.scene.active{
+  opacity:1;visibility:visible;
+  position:relative;
+}
+.scene#sceneHome{ z-index:1; }
+.scene#sceneBooks{ z-index:2; }
+
+/* ============================================================
+   背景音乐按钮
+   ============================================================ */
+#bgm{
+  position:fixed;
+  top:22px;right:24px;
+  z-index:9000;
+  display:grid;place-items:center;
+  width:38px;height:38px;
+  padding:0;
+  border-radius:50%;
+  background:rgba(10,4,6,.96);
+  border:1px solid rgba(195,17,26,.9);
+  box-shadow:0 0 16px rgba(120,8,14,.35), inset 0 0 10px rgba(120,8,14,.2);
+  backdrop-filter:blur(8px);
+  -webkit-backdrop-filter:blur(8px);
+  cursor:pointer;
+  transition:border-color .35s ease, background .35s ease, box-shadow .35s ease;
+  user-select:none;-webkit-user-select:none;
+}
+#bgm:hover{
+  border-color:rgba(195,17,26,1);
+  background:rgba(16,6,9,.98);
+}
+#bgm:focus-visible{ outline:1px solid rgba(195,17,26,.9); outline-offset:3px; }
+
+#bgm .bgm-mark{
+  display:block;width:20px;height:20px;flex:none;
+  transform:translateY(-1px);
+}
+#bgm .bgm-mark path{
+  fill:rgba(242,236,227,.95);
+  transition:fill .35s ease;
+}
+#bgm .bgm-mark .wedge{
+  fill:rgba(226,26,36,1);
+  transition:fill .35s ease;
+}
+#bgm.playing .bgm-mark path{ fill:rgba(246,239,228,1); }
+#bgm.playing .bgm-mark .wedge{
+  fill:rgb(255,150,90);
+  animation:bgmWedge 1.6s ease-in-out infinite;
+}
+@keyframes bgmWedge{ 0%,100%{opacity:.55} 50%{opacity:1} }
+#bgm:hover .bgm-mark path{ fill:#fff; }
+#bgm:hover .bgm-mark .wedge{ fill:rgb(255,150,90); }
+
+@media (max-width:600px){
+  #bgm{ top:14px;right:14px;width:34px;height:34px; }
+  #bgm .bgm-mark{ width:18px;height:18px; }
+}
+@media (prefers-reduced-motion:reduce){
+  #bgm.playing .bgm-mark .wedge{ animation:none; opacity:1; }
+}
+
+/* ============================================================
+   首页逐次入场
+   ============================================================ */
+.scene#sceneHome .reveal-item{
+  opacity:0;
+  will-change:opacity, transform;
+}
+
+/* 雕塑：从下浮起 */
+.scene#sceneHome .ri-statue{
+  transform:translateY(46px) scale(.985);
+  transition:opacity 1.1s cubic-bezier(.22,.8,.25,1),
+             transform 1.1s cubic-bezier(.22,.8,.25,1);
+}
+/* 主标题 */
+.scene#sceneHome .ri-headline{
+  transform:translateY(24px);
+  transition:opacity .85s cubic-bezier(.22,.8,.25,1),
+             transform .85s cubic-bezier(.22,.8,.25,1);
+}
+/* 副标题 */
+.scene#sceneHome .ri-sub{
+  transform:translateY(16px);
+  transition:opacity .8s cubic-bezier(.22,.8,.25,1),
+             transform .8s cubic-bezier(.22,.8,.25,1);
+}
+/* 底部大字：上浮 + 字距收拢 */
+.scene#sceneHome .ri-bottom{
+  transform:translateY(20px);
+  letter-spacing:.14em;
+  transition:opacity .9s cubic-bezier(.22,.8,.25,1),
+             transform .9s cubic-bezier(.22,.8,.25,1),
+             letter-spacing 1.2s cubic-bezier(.22,.8,.25,1);
+}
+/* 按钮：它靠 translateX(-50%) 居中，位移必须合并 */
+.scene#sceneHome .ri-cta{
+  transform:translate(-50%, 14px);
+  transition:opacity .7s cubic-bezier(.22,.8,.25,1),
+             transform .7s cubic-bezier(.22,.8,.25,1);
+}
+
+/* 已入场 */
+.scene#sceneHome.entered .reveal-item{
+  opacity:1;
+  transform:none;
+}
+.scene#sceneHome.entered .ri-cta{
+  transform:translate(-50%, 0);
+}
+.scene#sceneHome.entered .ri-bottom{
+  letter-spacing:.06em;
+}
+
+/* 延迟序列 */
+.scene#sceneHome .ri-statue{ transition-delay:0ms }
+.scene#sceneHome .ri-headline{ transition-delay:400ms }
+.scene#sceneHome .ri-sub{ transition-delay:720ms }
+.scene#sceneHome .ri-bottom{ transition-delay:900ms }
+.scene#sceneHome .ri-cta{ transition-delay:1150ms }
+
+@media (prefers-reduced-motion:reduce){
+  .scene#sceneHome .reveal-item{
+    opacity:1 !important; transform:none !important;
+    letter-spacing:.06em !important; transition:none !important;
+  }
+  .scene#sceneHome .ri-cta{ transform:translate(-50%, 0) !important; }
+}
+
+/* ============================================================
+   开场：暗黑哥特 · 圣所开启
+   ============================================================ */
+#boot{
+  position:fixed;inset:0;z-index:10000;
+  background:
+    radial-gradient(ellipse 54% 32% at 50% 30%, rgba(74,5,8,.55) 0%, transparent 66%),
+    radial-gradient(ellipse 90% 44% at 50% 96%, rgba(58,3,4,.8) 0%, transparent 62%),
+    radial-gradient(ellipse 150% 70% at 50% 50%, #0e0203 0%, #020101 74%),
+    #020101;
+  overflow:hidden;
+  display:grid;place-items:center;
+}
+
+#boot .b-spire{ position:absolute;bottom:0;pointer-events:none;opacity:.5;filter:blur(.4px); }
+#boot .b-spire svg{ display:block;height:100%;width:auto; }
+#boot .b-spire.l{ left:2.5%;height:66%; }
+#boot .b-spire.r{ right:3.5%;height:78%; }
+#boot .b-spire path{ fill:#0a0304; }
+
+#boot .b-fog{
+  position:absolute;inset:-14%;pointer-events:none;
+  background:
+    radial-gradient(ellipse 42% 20% at 26% 66%, rgba(96,72,70,.10) 0%, transparent 70%),
+    radial-gradient(ellipse 46% 17% at 74% 78%, rgba(84,60,58,.09) 0%, transparent 70%);
+  animation:bFogDrift 34s ease-in-out infinite alternate;
+}
+#boot .b-fog.b-fog2{ animation-duration:47s;animation-direction:alternate-reverse;opacity:.6;transform:translateY(6%); }
+@keyframes bFogDrift{
+  0%{transform:translate3d(-3%,0,0) scale(1)}
+  100%{transform:translate3d(4%,-2%,0) scale(1.06)}
+}
+
+#boot .b-ash{ position:absolute;inset:0;pointer-events:none;overflow:hidden; }
+#boot .b-ash i{
+  position:absolute;display:block;width:2px;height:2px;border-radius:50%;
+  background:rgba(195,17,26,.5);
+  box-shadow:0 0 4px rgba(195,17,26,.6);
+  animation:bAshFall linear infinite;
+}
+@keyframes bAshFall{
+  0%{transform:translateY(-8vh) translateX(0);opacity:0}
+  8%{opacity:.8} 90%{opacity:.5}
+  100%{transform:translateY(108vh) translateX(24px);opacity:0}
+}
+
+#boot .b-noise{
+  position:absolute;inset:0;pointer-events:none;opacity:.2;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
+  animation:bNoise .22s steps(2) infinite;
+  mix-blend-mode:overlay;
+}
+@keyframes bNoise{
+  0%{transform:translate(0,0)} 50%{transform:translate(-2%,1%)} 100%{transform:translate(1%,-1%)}
+}
+
+#boot .b-vignette{
+  position:absolute;inset:0;pointer-events:none;z-index:6;
+  background:radial-gradient(ellipse 84% 72% at 50% 48%,
+    transparent 0%, transparent 58%, rgba(2,1,1,.34) 82%, rgba(2,1,1,.62) 100%);
+}
+
+#boot .b-arch{
+  position:absolute;left:50%;top:5%;
+  width:min(720px,68vw);height:min(540px,56vh);
+  transform:translateX(-50%);pointer-events:none;opacity:.72;
+}
+#boot .b-arch svg{ width:100%;height:100%;display:block; }
+#boot .b-arch path{ fill:none;stroke:rgba(150,12,18,.46);stroke-width:1; }
+#boot .b-arch .arch-inner{ stroke:rgba(242,236,227,.08); }
+#boot .b-arch .arch-cross{ stroke:rgba(195,17,26,.6);stroke-width:1.3; }
+
+#boot .b-ray{
+  position:absolute;left:50%;top:0;
+  width:min(420px,46vw);height:80%;
+  transform:translateX(-50%);pointer-events:none;
+  background:conic-gradient(from 180deg at 50% 0%,
+    transparent 0deg, rgba(150,12,18,.10) 9deg, rgba(255,206,158,.06) 13deg,
+    transparent 22deg, transparent 338deg,
+    rgba(255,206,158,.06) 347deg, rgba(150,12,18,.10) 351deg, transparent 360deg);
+  filter:blur(9px);
+  animation:bRayBreathe 8.5s ease-in-out infinite;
+}
+@keyframes bRayBreathe{ 0%,100%{opacity:.28} 50%{opacity:.72} }
+
+#boot .b-corner{
+  position:absolute;width:34px;height:34px;
+  border-color:rgba(150,12,18,.64);border-style:solid;border-width:0;
+}
+#boot .b-corner.tl{ top:44px;left:48px;border-top-width:1px;border-left-width:1px; }
+#boot .b-corner.tr{ top:44px;right:48px;border-top-width:1px;border-right-width:1px; }
+#boot .b-corner.bl{ bottom:44px;left:48px;border-bottom-width:1px;border-left-width:1px; }
+#boot .b-corner.br{ bottom:44px;right:48px;border-bottom-width:1px;border-right-width:1px; }
+
+#boot .b-frame{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:min(520px,60vw);height:min(410px,44vh);
+  border:1px solid rgba(150,12,18,.20);
+  border-radius:50% 50% 3px 3px / 36% 36% 3px 3px;
+  pointer-events:none;
+  box-shadow:inset 0 -40px 80px rgba(2,1,1,.8);
+}
+
+#boot .b-core{
+  position:relative;z-index:8;
+  display:flex;flex-direction:column;align-items:center;text-align:center;
+}
+#boot .b-freq{
+  font-family:"Noto Serif SC",Georgia,serif;
+  font-size:9.5px;letter-spacing:.52em;text-transform:uppercase;
+  color:rgba(150,12,18,.9);margin-bottom:26px;text-indent:.52em;
+  text-shadow:0 0 18px rgba(150,12,18,.5);
+}
+#boot .b-status{
+  display:inline-block;padding:10px 38px;
+  border-top:1px solid rgba(242,236,227,.16);
+  border-bottom:1px solid rgba(242,236,227,.16);
+  background:rgba(2,1,1,.72);
+  font-family:"Noto Serif SC",Georgia,serif;
+  font-size:11.5px;letter-spacing:.40em;text-indent:.40em;
+  color:rgba(238,230,218,.82);margin-bottom:22px;white-space:nowrap;
+  text-shadow:0 0 22px rgba(150,12,18,.4);
+}
+#boot .b-pct{
+  font-family:"Noto Serif SC",Georgia,serif;font-weight:700;
+  font-size:clamp(68px,11vw,158px);line-height:.9;letter-spacing:-.015em;
+  color:#efe6d8;font-variant-numeric:tabular-nums;
+  display:flex;align-items:baseline;
+  text-shadow:0 0 18px rgba(150,12,18,.9),0 0 62px rgba(120,8,14,.7),
+              0 0 130px rgba(90,5,10,.5),0 3px 0 rgba(0,0,0,.9);
+}
+#boot .b-pct .sign{ font-size:.48em;font-weight:500;letter-spacing:0;opacity:.8; }
+
+#boot .b-radar-wrap{
+  position:absolute;top:48px;right:48px;
+  display:flex;flex-direction:column;align-items:center;gap:14px;z-index:7;
+}
+#boot .b-radar{
+  width:104px;height:104px;border-radius:50%;position:relative;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(150,12,18,.24) 0%, transparent 52%),
+    repeating-conic-gradient(from 0deg, rgba(150,12,18,.42) 0deg 2.5deg, transparent 2.5deg 30deg);
+  border:1px solid rgba(150,12,18,.46);
+  box-shadow:0 0 40px rgba(120,8,14,.35), inset 0 0 30px rgba(120,8,14,.28);
+}
+#boot .b-radar::before{ content:"";position:absolute;inset:9px;border-radius:50%;border:1px solid rgba(242,236,227,.13); }
+#boot .b-radar::after{
+  content:"";position:absolute;inset:27px;border-radius:50%;
+  border:1px solid rgba(150,12,18,.5);
+  background:radial-gradient(circle, rgba(150,12,18,.4) 0%, transparent 68%);
+  box-shadow:0 0 18px rgba(150,12,18,.5);
+}
+#boot .b-sweep{
+  position:absolute;inset:6px;border-radius:50%;
+  background:conic-gradient(from 0deg, rgba(150,12,18,.66) 0deg, rgba(150,12,18,.16) 30deg, transparent 74deg, transparent 360deg);
+  animation:bSweep 9.5s linear infinite;
+  -webkit-mask:radial-gradient(circle, transparent 12%, #000 13%);
+          mask:radial-gradient(circle, transparent 12%, #000 13%);
+}
+@keyframes bSweep{ to{transform:rotate(360deg)} }
+
+#boot .b-radar-label{
+  font-family:"Noto Serif SC",Georgia,serif;
+  font-size:8.5px;letter-spacing:.30em;text-transform:uppercase;
+  color:rgba(238,230,218,.26);white-space:nowrap;
+}
+#boot .b-badge{
+  font-family:"Noto Serif SC",Georgia,serif;
+  font-size:8.5px;letter-spacing:.32em;text-indent:.32em;
+  color:rgba(150,12,18,.92);
+  border:1px solid rgba(150,12,18,.6);padding:4px 13px;white-space:nowrap;
+  background:rgba(2,1,1,.5);
+}
+
+#boot .b-hud{
+  position:absolute;
+  font-family:"Noto Serif SC",Georgia,serif;
+  font-size:8.5px;line-height:2.15;letter-spacing:.28em;
+  text-transform:uppercase;color:rgba(238,230,218,.22);z-index:7;
+}
+#boot .b-hud b{ font-weight:400;color:rgba(150,12,18,.85); }
+#boot .b-hud.tl{ top:48px;left:48px; }
+#boot .b-hud.tr{ top:48px;right:180px;text-align:right; }
+#boot .b-hud.bl{ bottom:48px;left:48px; }
+#boot .b-hud.br{ bottom:48px;right:48px;text-align:right; }
+
+#boot .b-vbar{
+  position:absolute;left:70px;bottom:110px;
+  width:1px;height:172px;background:rgba(238,230,218,.08);z-index:7;
+}
+#boot .b-vbar i{
+  position:absolute;left:0;bottom:0;width:100%;height:0%;
+  background:linear-gradient(to top, rgba(150,12,18,.98), rgba(255,178,110,.92));
+  box-shadow:0 0 20px rgba(150,12,18,.95), 0 0 44px rgba(120,8,14,.6);
+  transition:height .2s linear;
+}
+
+#boot .b-rec{ display:inline-flex;align-items:center;gap:7px; }
+#boot .b-rec::before{
+  content:"";width:5px;height:5px;border-radius:50%;
+  background:rgba(255,168,100,.95);
+  box-shadow:0 0 12px rgba(255,150,90,.95), 0 0 26px rgba(150,12,18,.7);
+  animation:bBlink 3.1s ease-in-out infinite;
+}
+@keyframes bBlink{
+  0%,100%{opacity:.92;transform:scale(1)}
+  38%{opacity:.3;transform:scale(.78)}
+  52%{opacity:.85;transform:scale(.95)}
+}
+
+#boot.done .b-core{ animation:bCoreOut .65s cubic-bezier(.4,0,.2,1) forwards; }
+@keyframes bCoreOut{ to{opacity:0;transform:translateY(-18px) scale(.982)} }
+#boot.done{ animation:bCurtainUp 1.15s cubic-bezier(.76,0,.24,1) .42s forwards; }
+@keyframes bCurtainUp{ to{clip-path:inset(0 0 100% 0)} }
+
+@media (prefers-reduced-motion:reduce){
+  #boot .b-noise,#boot .b-sweep,#boot .b-rec::before,
+  #boot .b-ray,#boot .b-fog,#boot .b-ash i{ animation:none; }
+  #boot .b-ash{ display:none; }
+  #boot.done .b-core{ animation:none;opacity:0; }
+  #boot.done{ animation:none;clip-path:inset(0 0 100% 0); }
+}
+
+/* ============================================================
+   全局底图：暗红烟雾
+   ============================================================ */
+#bg-smoke{
+  position:fixed;inset:0;
+  z-index:0;                       /* 不能是负数，否则被 body 盖掉 */
+  background-image:url("assets/bg-smoke.jpg");
+  background-size:cover;
+  background-position:center 30%;
+  background-repeat:no-repeat;
+  background-color:#260203;
+  pointer-events:none;
+  filter:brightness(1.05) contrast(1.03) saturate(1.05);
+}
+#bg-smoke::after{
+  content:"";position:absolute;inset:0;
+  background:
+    radial-gradient(ellipse 86% 70% at 50% 42%,
+      transparent 0%, transparent 54%, rgba(2,1,1,.45) 84%, rgba(2,1,1,.78) 100%),
+    linear-gradient(to bottom, rgba(2,1,1,.28) 0%, transparent 22%, transparent 70%, rgba(2,1,1,.62) 100%);
+  pointer-events:none;
+}
+
+/* ============================================================
+   详情页打开时：音乐按钮移到「返回」下方，右对齐
+   返回键在 .detail-top 内，右边缘距视口 24px + 按钮宽 87px
+   音乐按钮 38px 宽，right:24px 即与之右对齐
+   ============================================================ */
+body.detail-open #bgm{
+  top:76px;
+  right:24px;
+}
+
+/* ============================================================
+   层级：山在最底，内容在上
+   ============================================================ */
+#sceneBooks .stage > *:not(#smoke-bg){ position:relative; z-index:2; }
+#sceneBooks #smoke-bg{ z-index:0; }
+
+/* ============================================================
+   首页两个标题：左对齐（贴容器左缘，不随 .stage 居中）
+   ============================================================ */
+#sceneHome .type-block,
+#sceneHome .bottom-type{
+  align-self:flex-start;
+}
+</style>
+</head>
+<body>
+
+<!-- 全局底图：暗红烟雾 -->
+<div id="bg-smoke" aria-hidden="true"></div>
+
+<!-- 开场：暗黑哥特 · 圣所开启 -->
+<div id="boot">
+  <div class="b-spire l" aria-hidden="true">
+    <svg viewBox="0 0 120 400" preserveAspectRatio="xMidYMax meet">
+      <path d="M60 0 L74 96 L74 400 L46 400 L46 96 Z"/>
+      <path d="M46 150 L30 190 L30 400 L46 400 Z" opacity=".8"/>
+      <path d="M74 150 L90 190 L90 400 L74 400 Z" opacity=".8"/>
+    </svg>
+  </div>
+  <div class="b-spire r" aria-hidden="true">
+    <svg viewBox="0 0 140 460" preserveAspectRatio="xMidYMax meet">
+      <path d="M70 0 L86 110 L86 460 L54 460 L54 110 Z"/>
+      <path d="M54 176 L34 224 L34 460 L54 460 Z" opacity=".75"/>
+      <path d="M86 176 L106 224 L106 460 L86 460 Z" opacity=".75"/>
+    </svg>
+  </div>
+
+  <div class="b-fog" aria-hidden="true"></div>
+  <div class="b-fog b-fog2" aria-hidden="true"></div>
+  <div class="b-ash" id="bAsh" aria-hidden="true"></div>
+  <div class="b-noise"></div>
+
+  <div class="b-arch" aria-hidden="true">
+    <svg viewBox="0 0 760 560" preserveAspectRatio="xMidYMax meet">
+      <path d="M40 560 L40 300 Q40 120 380 40 Q720 120 720 300 L720 560"/>
+      <path class="arch-inner" d="M92 560 L92 318 Q92 168 380 96 Q668 168 668 318 L668 560"/>
+      <path class="arch-cross" d="M380 40 L380 14 M360 26 L400 26"/>
+    </svg>
+  </div>
+  <div class="b-ray" aria-hidden="true"></div>
+
+  <span class="b-corner tl"></span>
+  <span class="b-corner tr"></span>
+  <span class="b-corner bl"></span>
+  <span class="b-corner br"></span>
+  <div class="b-frame"></div>
+
+  <div class="b-hud tl">SANCTUM<br><b class="b-rec">VIGILIA</b></div>
+  <div class="b-hud tr"><span id="bClock">HORA · XII</span><br>NOCTURNA</div>
+  <div class="b-hud bl">CAPELLA · 1247<br>LAPIS · SANGUIS<br>ORDO · SANCTI</div>
+  <div class="b-hud br"><span id="bFreqHud">LUX · 12.4</span><br>REVELATIO<br><b>OBSIGNATUM</b></div>
+
+  <div class="b-radar-wrap">
+    <div class="b-radar"><div class="b-sweep"></div></div>
+    <div class="b-radar-label">Rota Caelestis</div>
+    <div class="b-badge">OBSIGNATUM</div>
+  </div>
+
+  <div class="b-vbar"><i id="bVbar"></i></div>
+
+  <div class="b-core">
+    <div class="b-freq" id="bFreqTop">LUX AETERNA</div>
+    <div class="b-status" id="bStatus">APERITUR SANCTUM</div>
+    <div class="b-pct"><span id="bNum">00</span><span class="sign">%</span></div>
+  </div>
+
+  <div class="b-vignette" aria-hidden="true"></div>
+</div>
+
+<!-- 背景音乐按钮 -->
+<button id="bgm" type="button" aria-label="播放背景音乐" aria-pressed="false" title="背景音乐">
+  <svg class="bgm-mark" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M1.8 4.6 L4.0 2.2 L4.0 21.8 L1.8 21.8 Z"/>
+    <path d="M6.4 8.2 L8.6 5.4 L8.6 21.8 L6.4 21.8 Z"/>
+    <path class="wedge" d="M9.4 9.6 L11.6 8.2 L11.6 14.4 L9.4 15.8 Z"/>
+    <path class="wedge" d="M14.6 9.6 L12.4 8.2 L12.4 14.4 L14.6 15.8 Z"/>
+    <path d="M17.6 8.2 L15.4 5.4 L15.4 21.8 L17.6 21.8 Z"/>
+    <path d="M22.2 4.6 L20.0 2.2 L20.0 21.8 L22.2 21.8 Z"/>
+  </svg>
+</button>
+
+<div class="scene active" id="sceneHome">
+
+
+<div class="stage">
+
+  <!-- 背景：黑白雪山 + 红色半调网点 + 放射线 -->
+  <div id="smoke-bg" aria-hidden="true"></div>
+  <div class="center-rect" aria-hidden="true"></div>
+  <div class="tex-halftone" aria-hidden="true"></div>
+  <div class="tex-rays" aria-hidden="true"></div>
+  <div class="text-shade" aria-hidden="true"></div>
+
+  <!-- ============ 背景 ============ -->
+  <div class="blood-disc"></div>
+  <div class="blood-band"></div>
+
+  <!-- 同心圆环与弧线 -->
+  <div class="rings erode" style="--esp:31s;--edl:-9s;--ebd:11s;--ebdl:-4s" aria-hidden="true">
+    <svg viewBox="0 0 1440 820" preserveAspectRatio="xMidYMid slice">
+      <g fill="none" stroke="rgba(242,236,227,.22)" stroke-width="1">
+        <circle cx="1050" cy="330" r="250"/>
+        <circle cx="1050" cy="330" r="300" stroke="rgba(141,11,18,.75)" stroke-width="2"/>
+        <circle cx="1050" cy="330" r="360" stroke="rgba(242,236,227,.10)"/>
+        <!-- 左侧大弧 -->
+        <path d="M-120,520 A 420 420 0 0 1 300,180" stroke="rgba(242,236,227,.20)"/>
+        <path d="M-160,600 A 500 500 0 0 1 340,120" stroke="rgba(242,236,227,.10)"/>
+      </g>
+      <!-- 放射细线 -->
+      <g stroke="rgba(242,236,227,.18)" stroke-width="1">
+        <line x1="0" y1="150" x2="900" y2="150"/>
+        <line x1="0" y1="205" x2="760" y2="205"/>
+        <line x1="0" y1="470" x2="640" y2="470"/>
+        <line x1="0" y1="640" x2="520" y2="700"/>
+        <line x1="180" y1="820" x2="700" y2="300"/>
+      </g>
+      <!-- 锚点小圆 -->
+      <g fill="none" stroke="rgba(242,236,227,.5)" stroke-width="1.5">
+        <circle cx="905" cy="150" r="7"/>
+        <circle cx="760" cy="205" r="6"/>
+        <circle cx="640" cy="470" r="6"/>
+        <circle cx="520" cy="700" r="6"/>
+      </g>
+    </svg>
+  </div>
+
+  <!-- 环绕线（压在字上） -->
+  <div class="orbit erode" style="--esp:26s;--edl:-5s;--ebd:9s;--ebdl:-2s" aria-hidden="true">
+    <svg viewBox="0 0 1440 820" preserveAspectRatio="xMidYMid slice">
+      <path d="M-40,300 C300,180 640,240 900,120" fill="none" stroke="rgba(242,236,227,.55)" stroke-width="1.2"/>
+      <path d="M100,760 C420,700 760,620 1000,760" fill="none" stroke="rgba(242,236,227,.30)" stroke-width="1"/>
+      <path d="M120,110 C420,60 720,140 980,90" fill="none" stroke="rgba(242,236,227,.35)" stroke-width="1"/>
+    </svg>
+  </div>
+
+  <!-- ============ 白色装饰点 ============ -->
+  <span class="dot erode" style="--esp:17.0s;--edl:0.0s;--ebd:7.0s;--ebdl:0.0s;left:35%;top:15%" aria-hidden="true"></span>
+  <span class="dot erode" style="--esp:20.7s;--edl:-2.3s;--ebd:8.9s;--ebdl:-1.4s;left:52%;top:41%" aria-hidden="true"></span>
+  <span class="dot erode" style="--esp:24.4s;--edl:-4.6s;--ebd:10.8s;--ebdl:-2.8s;left:6%;top:64%" aria-hidden="true"></span>
+  <span class="dot erode" style="--esp:17.1s;--edl:-6.9s;--ebd:7.7s;--ebdl:-4.2s;left:96%;top:40%" aria-hidden="true"></span>
+  <span class="dot erode" style="--esp:20.8s;--edl:-9.2s;--ebd:9.6s;--ebdl:-5.6s;left:37%;top:93%" aria-hidden="true"></span>
+
+  <!-- ============ 星芒 ============ -->
+  <span class="spark erode" style="--esp:17.0s;--edl:0.0s;--ebd:7.0s;--ebdl:0.0s;left:32%;top:26%" aria-hidden="true">✦</span>
+  <span class="spark erode" style="--esp:20.7s;--edl:-2.3s;--ebd:8.9s;--ebdl:-1.4s;left:56%;top:20%" aria-hidden="true">✦</span>
+  <span class="spark erode" style="--esp:24.4s;--edl:-4.6s;--ebd:10.8s;--ebdl:-2.8s;left:8%;top:30%" aria-hidden="true">✦</span>
+
+  <!-- ============ 飞鸟 ============ -->
+  <span class="bird erode" style="--esp:17.0s;--edl:0.0s;--ebd:7.0s;--ebdl:0.0s;left:14%;top:11%" aria-hidden="true">
+    <svg viewBox="0 0 40 16"><path d="M2 12 Q12 2 20 10 Q28 2 38 12" fill="none" stroke="#f2ece3" stroke-width="2.2" stroke-linecap="round"/></svg>
+  </span>
+  <span class="bird erode" style="--esp:20.7s;--edl:-2.3s;--ebd:8.9s;--ebdl:-1.4s;left:22%;top:17%" aria-hidden="true">
+    <svg viewBox="0 0 40 16"><path d="M2 12 Q12 2 20 10 Q28 2 38 12" fill="none" stroke="#f2ece3" stroke-width="2" stroke-linecap="round"/></svg>
+  </span>
+  <span class="bird erode" style="--esp:24.4s;--edl:-4.6s;--ebd:10.8s;--ebdl:-2.8s;left:41%;top:9%" aria-hidden="true">
+    <svg viewBox="0 0 40 16"><path d="M2 12 Q12 2 20 10 Q28 2 38 12" fill="none" stroke="#f2ece3" stroke-width="2.4" stroke-linecap="round"/></svg>
+  </span>
+  <span class="bird erode" style="--esp:17.1s;--edl:-6.9s;--ebd:7.7s;--ebdl:-4.2s;left:61%;top:12%" aria-hidden="true">
+    <svg viewBox="0 0 40 16"><path d="M2 12 Q12 2 20 10 Q28 2 38 12" fill="none" stroke="#f2ece3" stroke-width="2" stroke-linecap="round"/></svg>
+  </span>
+  <!-- 红色残影鸟 -->
+  <span class="bird erode" style="--esp:20.8s;--edl:-9.2s;--ebd:9.6s;--ebdl:-5.6s;left:47%;top:24%;opacity:.55" aria-hidden="true">
+    <svg viewBox="0 0 40 16"><path d="M2 12 Q12 2 20 10 Q28 2 38 12" fill="none" stroke="#c3111a" stroke-width="2.2" stroke-linecap="round"/></svg>
+  </span>
+  <span class="bird erode" style="--esp:24.5s;--edl:-11.5s;--ebd:11.5s;--ebdl:-7.0s;left:69%;top:30%;opacity:.4" aria-hidden="true">
+    <svg viewBox="0 0 40 16"><path d="M2 12 Q12 2 20 10 Q28 2 38 12" fill="none" stroke="#c3111a" stroke-width="2" stroke-linecap="round"/></svg>
+  </span>
+
+  <!-- ============ 排版 ============ -->
+  <div class="type-block reveal-item ri-headline">
+    <h1 class="headline">
+      <span class="line-1">周旋，<span class="hot">即是相拥。</span></span>
+    </h1>
+
+    <!-- 幽灵副标题：重复了一遍，压暗、模糊 -->
+    <div class="ghost" aria-hidden="true">
+      周旋，<span class="hot">即是相拥。</span>
+    </div>
+    <div class="sub-ghost reveal-item ri-sub">TO CIRCLE IS TO EMBRACE.</div>
+  </div>
+
+  <!-- ============ 底部大字 ============ -->
+  <div class="bottom-type reveal-item ri-bottom">
+    <p class="anima">
+      词根予生，<span class="hot">世人见牙。</span>
+      <span class="stack">WORDS BEGET LIFE · THE WORLD BARES ITS TEETH</span>
+      <span class="sub">SANCTUM · SANGUIS · REDEMPTIO</span>
+    </p>
+  </div>
+
+  <!-- ============ 聆听神祗：进入书页 ============ -->
+  <a class="listen reveal-item ri-cta" href="#" id="listenBtn">聆听神祗</a>
+
+  <!-- ============ 雕塑 ============ -->
+  <div class="statue-wrap reveal-item ri-statue" aria-hidden="true">
+    <div class="statue"></div>
+  </div>
+
+  <!-- ============ 噪点 ============ -->
+  <div class="grain" aria-hidden="true"></div>
+</div>
+
+<!-- 转场：深色带扫过（首页 → 列表页） -->
+<div class="page-wipe" id="pageWipe" aria-hidden="true">
+  <div class="page-wipe-band" id="pageWipeBand"></div>
+</div>
+
+<script>
+/* 检测雕塑图是否存在：存在则铺满，缺失则显示占位剪影 */
+(function () {
+  const img = new Image();
+  img.onload = () => document.body.classList.replace('no-statue', 'has-statue');
+  img.onerror = () => document.body.classList.replace('has-statue', 'no-statue');
+  img.src = 'assets/statue.png';
+})();
+
+/* 首页 → 列表页：深色带扫过 */
+(function () {
+  var link = document.querySelector('.listen');
+  var wipe = document.getElementById('pageWipe');
+  var band = document.getElementById('pageWipeBand');
+  if (!link || !wipe || !band) return;
+
+  var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduce) return;
+
+  link.addEventListener('click', function (e) {
+    e.preventDefault();
+    var href = link.getAttribute('href');
+
+    wipe.classList.add('on');
+    band.style.transition = 'none';
+    band.style.bottom = '0';
+    band.style.top = 'auto';
+    band.style.height = '0%';
+    void band.offsetHeight;
+
+    requestAnimationFrame(function () {
+      band.style.transition = 'height 420ms cubic-bezier(.65,0,.35,1)';
+      void band.offsetHeight;
+      band.style.height = '100%';
+
+      /* 带子铺满后，先 fetch 新页面（进缓存），再跳转。
+         这样跳过去时资源已在本地，空白期最短。 */
+      /* 带子长满需要 420ms，跳转不能早于它；预拉取与动画并行进行。
+         两个条件都满足才跳：① 动画已满屏 ② 页面已在缓存里 */
+      var animDone = false, fetchDone = false, jumped = false;
+
+      function tryGo() {
+        if (jumped || !animDone || !fetchDone) return;
+        jumped = true;
+        window.location.href = href;
+      }
+
+      setTimeout(function () { animDone = true; tryGo(); }, 430);
+
+      fetch(href)
+        .then(function (r) { return r.text(); })
+        .then(function () { fetchDone = true; tryGo(); })
+        .catch(function () { fetchDone = true; tryGo(); });
+
+      /* 兜底：1.5 秒后无论如何都跳 */
+      setTimeout(function () { jumped = true; window.location.href = href; }, 1500);
+    });
+  });
+})();
+</script>
+
+
+</div>
+
+<div class="scene" id="sceneBooks">
+
+
+<a class="skip" href="#main">跳到主要内容</a>
+
+<nav class="nav" id="nav">
+  <a class="brand" href="#" id="brandHome">聆听神祗</a>
+  <div class="nav-links"><a href="#books">三部圣书</a></div>
+</nav>
+
+<main id="main">
+
+
+
+
+
+  <section class="books-sec" id="books">
+    <!-- 铭文 -->
+    <div class="litany reveal">
+      <p>尖塔刺破中世纪的阴霾</p>
+      <p><span class="hot">钟声敲碎愚昧的枷锁</span></p>
+      <p>神的光芒在穹顶上永恒闪烁</p>
+    </div>
+
+    <div class="section-head reveal">
+      <h2>三部圣书</h2>
+      <p>悬停查看 · 点击翻阅</p>
+    </div>
+
+    <div class="stage3d" id="stage3d">
+      <canvas id="bookCanvas"></canvas>
+      <div class="hint">拖拽旋转 · 点击翻阅</div>
+    </div>
+      <button class="book reveal" data-book="0" aria-label="查看第 1 部圣书详情" style="display:none"></button>
+      <button class="book reveal" data-book="1" aria-label="查看第 2 部圣书详情" style="display:none"></button>
+      <button class="book reveal" data-book="2" aria-label="查看第 3 部圣书详情" style="display:none"></button>
+  </section>
+
+
+
+</main>
+
+
+
+<!-- 过渡遮罩：深色带扫过画面 -->
+<div class="wipe" id="wipe" aria-hidden="true">
+  <div class="wipe-band" id="wipeBand"></div>
+</div>
+
+<!-- ==================== 详情页（全屏） ==================== -->
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="detailTitle" aria-hidden="true">
+
+  <div class="detail-top">
+    <span class="detail-brand">聆听神祗</span>
+    <button class="detail-close" id="modalClose" aria-label="返回圣书列表">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+        <path d="M13 8H3M7 4L3 8l4 4"/>
+      </svg>
+      返回
+    </button>
+  </div>
+
+  <div class="detail-grid">
+
+    <!-- 左：立起来的大书影 -->
+    <div class="detail-visual" aria-hidden="true">
+      <!-- 书由底层主画布渲染，这里只占位 -->
+      <div class="detail-stage3d"></div>
+    </div>
+
+    <!-- 右：文字 -->
+    <div class="detail-copy">
+      <div class="detail-vol" id="detailVol">Vol. I</div>
+      <h3 id="detailTitle">阴翳中的圣所</h3>
+      <div class="detail-author" id="detailAuthor">Viper/璃砚</div>
+      <div class="detail-rule"></div>
+      <p class="detail-body" id="detailBody"></p>
+      <div class="detail-buy-row">
+        <button class="detail-buy" type="button">点击跳转</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* 导航 */
+const nav = document.getElementById('nav');
+const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 24);
+onScroll();
+addEventListener('scroll', onScroll, { passive: true });
+
+/* 入场 */
+const io = new IntersectionObserver((entries) => {
+  entries.forEach((e) => {
+    if (!e.isIntersecting) return;
+    e.target.classList.add('in');
+    io.unobserve(e.target);
+  });
+}, { rootMargin: '0px', threshold: 0.05 });
+[...document.querySelectorAll('.reveal')].forEach((el, i) => {
+  el.style.transitionDelay = (i % 4) * 100 + 'ms';
+  io.observe(el);
+});
+
+/* 三本书的数据 —— 详情页用的完整正文 */
+const BOOKS = [
+  {
+    vol: 'Vol. I', title: '阴翳中的圣所',
+    eng: 'The Chapel in Dusk',
+    author: 'Viper/璃砚', 
+    band: 'rgba(195,17,26,.80)',
+    // 详情页背景：由该书封面衍生（深红 → 暖灰粉）
+    detailBg: '#12080a',
+    detailGlow: 'rgba(195,17,26,.42)',
+    transBg: '#3a2429',
+    face: 'linear-gradient(150deg,#1a1410 0%,#3d342a 52%,#705f4c 100%)',
+    img: 'assets/cover-sanctuary.jpg',
+    body: '自创世的誓约里降生，世人却执着于他与生俱来的轮廓，为他冠上<strong>罪的称谓</strong><br>他携缄默的神性栖于沉寂之中，这份爱即是<strong>盟约</strong>，一旦应允，永无背弃<br>与他相伴，是一场<strong>自愿的朝圣</strong>，踏进来，就不必寻归途。', link: 'https://www.kdocs.cn/l/cedbMnBj9xrf'
+  },
+  {
+    vol: 'Vol. II', title: '骨与血的颂歌',
+    eng: 'A Hymn of Bone and Blood',
+    author: 'Viper/璃砚', 
+    band: 'rgba(141,11,18,.88)',
+    detailBg: '#140a0c',
+    detailGlow: 'rgba(141,11,18,.40)',
+    transBg: '#48202a',
+    face: 'linear-gradient(150deg,#2a0608 0%,#8d0b12 52%,#43141b 100%)',
+    img: 'assets/cover-hymn.jpg',
+    body: '世人祈求<strong>赤裸无掩</strong>的赤诚，她却于疏离的间隙凝望灵魂<br>不妄作挽留，不轻易布施真心，用<strong>自持</strong>封存心底沉敛的执念<br>倘若你甘愿越过她立下的界碑，便要知晓，往后所有起落行止，皆在她沉静的谛视之中。', link: 'https://www.kdocs.cn/l/cheUIXAf0W1f'
+  },
+  {
+    vol: 'Vol. III', title: '神祗的沉眠',
+    eng: 'The Sleep of Gods',
+    author: 'Viper/璃砚', 
+    band: 'rgba(60,20,26,.82)',
+    detailBg: '#0d0809',
+    detailGlow: 'rgba(80,26,34,.34)',
+    transBg: '#2e2329',
+    face: 'linear-gradient(150deg,#0f0c0e 0%,#2a1f24 52%,#5b434c 100%)',
+    img: 'assets/cover-sleep.jpg',
+    body: '世人将<strong>倾尽袒露</strong>奉为情爱的圣证，<br>我独信持守分寸的<strong>凝睇</strong>，才是至高的观照<br>你既踏临我的界域，便该知晓<br>你一切行止浮沉，尽在我沉静的谛视之中。', link: 'https://www.kdocs.cn/l/cgb9yIVtKp4H'
+  }
+];
+
+/* 详情页 */
+const modal = document.getElementById('modal');
+const modalClose = document.getElementById('modalClose');
+// detailBook 已由 WebGL 画布取代
+let lastFocused = null;
+
+function setText(id, v) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = v;
+}
+
+let transTimer = null;
+let isOpen = false;
+
+function openDetail(i) {
+  const b = BOOKS[i];
+  if (!b || isOpen) return;
+  isOpen = true;
+  clearTimeout(transTimer);
+  lastFocused = document.activeElement;
+
+  /* ---- 填充内容 ---- */
+  setText('detailVol', b.vol);
+  setText('detailTitle', b.title);
+  setText('detailAuthor', b.author);
+  const ttl = document.getElementById('detailFaceTitle');
+  if (ttl && ttl.firstChild) ttl.firstChild.nodeValue = b.title;
+  setText('detailFaceEng', b.eng);
+  document.getElementById('detailBody').innerHTML = b.body;
+  const buyBtn = document.querySelector('.detail-buy');
+  if (buyBtn) buyBtn.dataset.link = b.link || '';
+
+  // 详情页书影由 three.js 渲染，这里不再设置 CSS 变量
+
+  /* ---- 主题色 ---- */
+  modal.style.setProperty('--detail-bg', b.detailBg);
+  modal.style.setProperty('--detail-glow', b.detailGlow);
+  document.body.style.setProperty('--trans-bg', b.transBg);
+
+  document.body.classList.add('transitioning');
+
+  /* 单画布：立刻开始 morph（书自己从列表位走到详情位），
+     同时让详情页的文字层淡入——两者同步，没有先后交接 */
+  if (window.__detail3d) window.__detail3d.build(i);
+
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---- 深色带扫过（参考 noho）：
+     阶段1 (0~380ms) : 带子从底部长到满屏
+     阶段2           : 满屏瞬间切换内容
+     阶段3 (380~760ms): 带子从顶部收走，露出详情页 ---- */
+  const wipe = document.getElementById('wipe');
+  const band = document.getElementById('wipeBand');
+
+  function showDetail() {
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+    modal.scrollTop = 0;
+    modalClose.focus();
+  }
+
+  /* 不做黑屏转场：书由主画布 morph 过去，这里直接打开文字面板 */
+  transTimer = setTimeout(showDetail, 0);
+
+}
+
+function closeDetail() {
+  clearTimeout(transTimer);
+
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const wipe = document.getElementById('wipe');
+  const band = document.getElementById('wipeBand');
+
+  function doClose() {
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    document.body.classList.remove('transitioning');
+    document.body.classList.remove('detail-open');
+    if (window.__detail3d) window.__detail3d.exit();
+  }
+
+  if (reduce || !wipe || !band) {
+    doClose();
+    isOpen = false;
+    if (lastFocused) lastFocused.focus();
+    return;
+  }
+
+  /* 不做黑屏转场：直接关闭，书自己 morph 回列表 */
+  doClose();
+  isOpen = false;
+  if (lastFocused) lastFocused.focus();
+  isOpen = false;
+  if (lastFocused) lastFocused.focus();
+}
+
+document.querySelectorAll('.book').forEach((el) => {
+  el.addEventListener('click', () => openDetail(Number(el.dataset.book)));
+});
+modalClose.addEventListener('click', closeDetail);
+
+  /* 「点击跳转」：事件委托，读当前书的 link */
+  document.querySelector('.detail-buy').addEventListener('click', function () {
+    var l = this.dataset.link;
+    if (l) window.open(l, '_blank', 'noopener');
+  });
+addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && modal.classList.contains('open')) closeDetail();
+});
+
+</script>
+
+<script type="module">
+/* ============================================================
+   3D 书模型（ESM · 圆角几何 + 环境光照）
+   ============================================================ */
+import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/RoundedBoxGeometry.js';
+import { RoomEnvironment } from 'three/addons/RoomEnvironment.js';
+
+/* ============================================================
+   程序化纹理：让书页有真实的纸纹层次，而不是一块死白
+   ============================================================ */
+function makePageEdgeTexture(renderer) {
+  // 书口/书页截面：密集细横线 + 轻微色差
+  const W = 512, H = 256;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const c = cv.getContext('2d');
+
+  c.fillStyle = '#f2ece2';
+  c.fillRect(0, 0, W, H);
+
+  // 纸页分层：细密横纹，间距不一制造真实感
+  let y = 0;
+  while (y < H) {
+    const gap = 1.6 + Math.random() * 2.2;
+    const shade = 190 + Math.floor(Math.random() * 45);
+    c.fillStyle = 'rgba(' + shade + ',' + (shade - 8) + ',' + (shade - 20) + ',0.55)';
+    c.fillRect(0, y, W, Math.max(0.7, gap * 0.45));
+    y += gap;
+  }
+
+  // 每隔一段加一条更深的沟壑（书帖分界）
+  for (let i = 0; i < 7; i++) {
+    const yy = Math.floor(Math.random() * H);
+    c.fillStyle = 'rgba(120,105,88,0.30)';
+    c.fillRect(0, yy, W, 1.4);
+  }
+
+  // 两端压暗，做出装订处的阴影
+  const lg = c.createLinearGradient(0, 0, W, 0);
+  lg.addColorStop(0, 'rgba(90,75,62,0.34)');
+  lg.addColorStop(0.14, 'rgba(90,75,62,0)');
+  lg.addColorStop(0.86, 'rgba(90,75,62,0)');
+  lg.addColorStop(1, 'rgba(90,75,62,0.34)');
+  c.fillStyle = lg;
+  c.fillRect(0, 0, W, H);
+
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+function makeClothTexture(renderer, baseHex) {
+  // 布面/皮面：细腻噪点 + 经纬纹理
+  const W = 256, H = 256;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const c = cv.getContext('2d');
+  const col = new THREE.Color(baseHex);
+  const r = Math.round(col.r * 255), g = Math.round(col.g * 255), b = Math.round(col.b * 255);
+
+  c.fillStyle = 'rgb(' + r + ',' + g + ',' + b + ')';
+  c.fillRect(0, 0, W, H);
+
+  // 经纬交织
+  c.strokeStyle = 'rgba(255,255,255,0.055)';
+  c.lineWidth = 1;
+  for (let i = 0; i < W; i += 3) {
+    c.beginPath(); c.moveTo(i, 0); c.lineTo(i, H); c.stroke();
+  }
+  c.strokeStyle = 'rgba(0,0,0,0.075)';
+  for (let i = 0; i < H; i += 3) {
+    c.beginPath(); c.moveTo(0, i); c.lineTo(W, i); c.stroke();
+  }
+
+  // 细腻噪点
+  const img = c.getImageData(0, 0, W, H);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const nz = (Math.random() - 0.5) * 26;
+    d[i] = Math.max(0, Math.min(255, d[i] + nz));
+    d[i+1] = Math.max(0, Math.min(255, d[i+1] + nz));
+    d[i+2] = Math.max(0, Math.min(255, d[i+2] + nz));
+  }
+  c.putImageData(img, 0, 0);
+
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+/* 书脊文字纹理：在布面上印书名 */
+function makeSpineLabelTexture(renderer, meta) {
+  /* 书脊面是横向宽条（书长 2.12 × 书厚 0.62 ≈ 3.4:1），纹理也做横向 */
+  const W = 1024, H = 300;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const c = cv.getContext('2d');
+
+  /* 布面底色 */
+  const col = new THREE.Color(meta.spine);
+  c.fillStyle = 'rgb(' + Math.round(col.r*255) + ',' + Math.round(col.g*255) + ',' + Math.round(col.b*255) + ')';
+  c.fillRect(0, 0, W, H);
+
+  /* 布纹：细密经纬 */
+  c.strokeStyle = 'rgba(255,255,255,0.045)';
+  c.lineWidth = 1;
+  for (let i = 0; i < W; i += 3) { c.beginPath(); c.moveTo(i,0); c.lineTo(i,H); c.stroke(); }
+  c.strokeStyle = 'rgba(0,0,0,0.07)';
+  for (let i = 0; i < H; i += 3) { c.beginPath(); c.moveTo(0,i); c.lineTo(W,i); c.stroke(); }
+
+  /* 上下两道烫金装帧线 */
+  c.fillStyle = 'rgba(216,188,132,0.5)';
+  c.fillRect(0, 34, W, 3);
+  c.fillRect(0, H - 37, W, 3);
+
+  /* 书名：横排，居中偏左（右侧留给卷号） */
+  c.fillStyle = '#e6cd96';
+  c.textAlign = 'left';
+  c.textBaseline = 'middle';
+  c.font = '700 92px "Noto Serif SC", "Songti SC", serif';
+  c.fillText(meta.title, 56, H * 0.52);
+
+  /* 右侧卷号 */
+  c.textAlign = 'right';
+  c.font = '500 40px Inter, system-ui, sans-serif';
+  c.fillStyle = 'rgba(230,205,150,0.75)';
+  c.fillText(meta.vol || '', W - 48, H * 0.52);
+
+  /* 两端压暗，做出书脊的圆弧转折 */
+  const lg = c.createLinearGradient(0, 0, W, 0);
+  lg.addColorStop(0, 'rgba(0,0,0,0.30)');
+  lg.addColorStop(0.06, 'rgba(0,0,0,0)');
+  lg.addColorStop(0.94, 'rgba(0,0,0,0)');
+  lg.addColorStop(1, 'rgba(0,0,0,0.30)');
+  c.fillStyle = lg;
+  c.fillRect(0, 0, W, H);
+
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return t;
+}
+
+/* ============================================================
+   PBR 贴图：粗糙度 + 法线
+   —— 让布面有微观起伏、纸面有纤维感，金属字有锐利反射
+   ============================================================ */
+const __pbrCache = new Map();
+
+function makeClothPBR(renderer, baseHex) {
+  /* 缓存：同样的布面颜色只算一次（这是首屏卡顿的主要来源） */
+  const key = 'cloth_' + baseHex;
+  if (__pbrCache.has(key)) return __pbrCache.get(key);
+
+  /* 256 足够：布纹是高频细节，缩到屏幕上看不出差别，
+     但生成耗时降到 1/4 */
+  const S = 256;
+  const col = new THREE.Color(baseHex);
+  const r0 = col.r, g0 = col.g, b0 = col.b;
+
+  /* ---- 粗糙度图：布纹起伏 ---- */
+  const rc = document.createElement('canvas');
+  rc.width = S; rc.height = S;
+  const rctx = rc.getContext('2d');
+  const rimg = rctx.createImageData(S, S);
+  const rd = rimg.data;
+
+  // 经纬交织的粗糙度：经线略粗、纬线略细
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const i = (y * S + x) * 4;
+      // 交织纹理
+      const weave = (Math.sin(x * 0.9) * Math.sin(y * 0.9)) * 0.5 + 0.5;
+      const grain = Math.random() * 0.18;
+      // 粗糙度落在 0.58 ~ 0.88
+      const rough = 0.62 + weave * 0.16 + grain;
+      const v = Math.min(255, Math.round(rough * 255));
+      rd[i] = rd[i+1] = rd[i+2] = v;
+      rd[i+3] = 255;
+    }
+  }
+  rctx.putImageData(rimg, 0, 0);
+
+  /* ---- 法线图：经纬凹凸 ---- */
+  const nc = document.createElement('canvas');
+  nc.width = S; nc.height = S;
+  const nctx = nc.getContext('2d');
+  const nimg = nctx.createImageData(S, S);
+  const nd = nimg.data;
+
+  const hAt = (x, y) => {
+    // 高度场：两组正交的正弦叠加，模拟布面
+    const a = Math.sin(x * 0.9) * 0.5;
+    const b = Math.sin(y * 0.9) * 0.5;
+    return a + b;
+  };
+
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const i = (y * S + x) * 4;
+      const hL = hAt((x - 1 + S) % S, y);
+      const hR = hAt((x + 1) % S, y);
+      const hD = hAt(x, (y - 1 + S) % S);
+      const hU = hAt(x, (y + 1) % S);
+
+      let nx = (hL - hR) * 0.35;
+      let ny = (hD - hU) * 0.35;
+      const nz = 1.0;
+      const len = Math.hypot(nx, ny, nz);
+      nx /= len; ny /= len;
+
+      nd[i]   = Math.round((nx * 0.5 + 0.5) * 255);
+      nd[i+1] = Math.round((ny * 0.5 + 0.5) * 255);
+      nd[i+2] = Math.round((nz / len * 0.5 + 0.5) * 255);
+      nd[i+3] = 255;
+    }
+  }
+  nctx.putImageData(nimg, 0, 0);
+
+  const rTex = new THREE.CanvasTexture(rc);
+  rTex.wrapS = rTex.wrapT = THREE.RepeatWrapping;
+  rTex.repeat.set(4, 4);
+  rTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+  const nTex = new THREE.CanvasTexture(nc);
+  nTex.wrapS = nTex.wrapT = THREE.RepeatWrapping;
+  nTex.repeat.set(4, 4);
+  nTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+  const out = { roughnessMap: rTex, normalMap: nTex };
+  __pbrCache.set(key, out);
+  return out;
+}
+
+/* 纸张的 PBR：细密纤维 + 极轻凹凸 */
+let __paperCache = null;
+
+function makePaperPBR(renderer) {
+  if (__paperCache) return __paperCache;
+
+  const S = 256;
+  const rc = document.createElement('canvas');
+  rc.width = S; rc.height = S;
+  const ctx = rc.getContext('2d');
+  const img = ctx.createImageData(S, S);
+  const d = img.data;
+
+  for (let i = 0; i < d.length; i += 4) {
+    const v = 218 + Math.random() * 30;   // 0.85~0.97 粗糙
+    d[i] = d[i+1] = d[i+2] = v;
+    d[i+3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+
+  const rTex = new THREE.CanvasTexture(rc);
+  rTex.wrapS = rTex.wrapT = THREE.RepeatWrapping;
+  rTex.repeat.set(6, 6);
+  rTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  __paperCache = { roughnessMap: rTex };
+  return __paperCache;
+}
+
+const BOOKS_META = [
+  { img: 'assets/cover-sanctuary.jpg', spine: 0x8d0b12, title: '阴翳中的圣所', vol: 'VOL. I' },
+  { img: 'assets/cover-hymn.jpg',      spine: 0x9e1119, title: '骨与血的颂歌', vol: 'VOL. II' },
+  { img: 'assets/cover-sleep.jpg',     spine: 0x2a2028, title: '神祗的沉眠',   vol: 'VOL. III' },
+];
+
+function makeBookShared(ctx, meta, index) {
+  const { THREE, RoundedBoxGeometry, loader, renderer, R = 0.018,
+          pageTex, clothTex } = ctx;
+
+  const g = new THREE.Group();
+
+  /* 天然横躺姿态：
+     X = 书长（水平），Y = 书厚（竖直），Z = 书宽（纵深）
+     封面在 ±Y 顶底面；书脊在 +Z 正面 */
+  const W = 2.12;   // 书长（水平）
+  const H = 0.30;   // 书厚（竖直）—— 回到接近真实的比例（书长:书厚 ≈ 7:1）
+  const D = 1.40;   // 书宽（纵深）
+
+  const CT = 0.028;
+  const FACE_W = W + 0.014;
+  const FACE_D = D + 0.014;
+
+  /* ① 书芯 */
+  const pages = new THREE.Mesh(
+    new RoundedBoxGeometry(W, H, D, 3, R),
+    new THREE.MeshStandardMaterial({
+      map: pageTex, color: 0xffffff,
+      roughness: 0.93, metalness: 0.0, envMapIntensity: 0.35,
+    })
+  );
+  pages.castShadow = pages.receiveShadow = true;
+  g.add(pages);
+
+  /* ② 顶底封面（真画在顶面） */
+  const tex = loader.load(meta.img);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+  /* 封面纹理：模型立起来后 X→Y 会让图歪 90°，转回来 */
+  tex.center.set(0.5, 0.5);
+  tex.rotation = -Math.PI / 2;
+
+  /* 印刷纸：哑光、微粗糙、有纸纤维的凹凸 */
+  const _paperPBR = makePaperPBR(renderer);
+  const coverMat = new THREE.MeshStandardMaterial({
+    map: tex,
+    color: 0xffffff,
+    roughness: 0.58,
+    metalness: 0.02,
+    roughnessMap: _paperPBR.roughnessMap,
+    envMapIntensity: 0.9,
+  });
+  /* 布面：粗糙度图 + 法线图，有真实的经纬质感 */
+  const _clothPBR = makeClothPBR(renderer, meta.spine);
+  const clothMat = new THREE.MeshStandardMaterial({
+    map: clothTex,
+    color: meta.spine,
+    roughness: 0.72,
+    metalness: 0.06,
+    roughnessMap: _clothPBR.roughnessMap,
+    normalMap: _clothPBR.normalMap,
+    normalScale: new THREE.Vector2(0.45, 0.45),
+    envMapIntensity: 0.85,
+  });
+
+  for (const sign of [1, -1]) {
+    /* 两面都用封面画：详情页旋转后可能看到任一面 */
+    const face = new THREE.Mesh(
+      new RoundedBoxGeometry(FACE_W, CT, FACE_D, 3, 0.010),
+      coverMat
+    );
+    face.position.y = sign * (H / 2 + CT / 2);
+    face.castShadow = face.receiveShadow = true;
+    g.add(face);
+  }
+
+  /* ③ 书脊：在书的短边（±X），皮质 + 烫金书名
+     模型 X=书长、Y=书厚、Z=书宽；书脊是"合页那一侧"，即 X 方向的两端之二
+     真实书籍只有一侧是书脊，另一侧是书口（书页断面） */
+  const labelTex = makeSpineLabelTexture(renderer, meta);
+  /* 书脊：布面底 + 烫金字，金属反射更锐利 */
+  const _spinePBR = makeClothPBR(renderer, meta.spine);
+  const spineLabelMat = new THREE.MeshStandardMaterial({
+    map: labelTex,
+    roughness: 0.42,
+    metalness: 0.58,
+    roughnessMap: _spinePBR.roughnessMap,
+    normalMap: _spinePBR.normalMap,
+    normalScale: new THREE.Vector2(0.3, 0.3),
+    envMapIntensity: 1.15,
+  });
+
+  /* 书脊：朝前(+Z)，正对观察者 —— 横躺的书这一面就是"书脊带"
+     尺寸：书长(W) × 书厚(H) × 薄(0.052)，是画面上一条横向的宽带 */
+  const spine = new THREE.Mesh(
+    new RoundedBoxGeometry(FACE_W, H + CT * 2, 0.052, 2, 0.010),
+    spineLabelMat
+  );
+  /* 书脊放在 -Z 侧：logo 视角下旋转后会落到左边 */
+  spine.position.z = -(D / 2) - 0.024;
+  spine.castShadow = spine.receiveShadow = true;
+  g.add(spine);
+
+  /* 书口：朝后(-Z)，露出纸页断面 */
+  const foreEdge = new THREE.Mesh(
+    new THREE.BoxGeometry(W - 0.02, H, 0.040),
+    new THREE.MeshStandardMaterial({
+      map: pageTex, color: 0xffffff,
+      roughness: 0.92, metalness: 0,
+      envMapIntensity: 0.35,
+    })
+  );
+  foreEdge.position.z = (D / 2) + 0.020;
+  foreEdge.castShadow = true;
+  g.add(foreEdge);
+
+
+
+  /* ⑤ 背面书口 */
+  const backEdge = new THREE.Mesh(
+    new RoundedBoxGeometry(W - 0.006, H, 0.024, 2, 0.006),
+    new THREE.MeshStandardMaterial({
+      map: pageTex, color: 0xffffff,
+      roughness: 0.95, metalness: 0, envMapIntensity: 0.3,
+    })
+  );
+  backEdge.position.z = (D / 2) + 0.030;
+  backEdge.castShadow = true;
+  g.add(backEdge);
+
+  g.userData.index = index;
+  return g;
+}
+
+
+/* 延迟启动：等开场动画播完再初始化 3D，避免主线程争抢
+   （否则开场的 rAF 被跳过，计数会从 0 直接跳到 90+） */
+function whenBootDone(fn) {
+  if (!document.getElementById('boot')) { fn(); return; }   // 无开场
+  var done = false;
+  function run() { if (done) return; done = true; fn(); }
+  window.addEventListener('boot:done', run, { once: true });
+  setTimeout(run, 8000);   // 兜底
+}
+
+whenBootDone(function () {
+(function initBooks3D() {
+  const canvas = document.getElementById('bookCanvas');
+  if (!canvas) return;
+
+
+
+
+
+  /* ============================================================
+     列表姿态的唯一常量来源。任何地方要用都必须引用它，
+     否则会出现"各处数值不一致 → 动画跳变"的问题。
+     ============================================================ */
+  const LIST_ROT = { x: 0.26, y: Math.PI - 0.14, z: 0 };
+
+  const parent = canvas.parentElement;
+  const scene = new THREE.Scene();
+
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+
+  // 环境贴图：让封面/皮质有真实反光
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+  const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 60);
+  camera.position.set(0, 0.52, 3.15);
+  camera.lookAt(0, 0, 0);
+
+  /* ---- 灯光 ---- */
+  const key = new THREE.DirectionalLight(0xfff8f0, 3.2);
+  key.position.set(2.6, 3.4, 3.0);
+  key.castShadow = true;
+  key.shadow.mapSize.set(2048, 2048);
+  Object.assign(key.shadow.camera, { near: 0.5, far: 14, left: -3, right: 3, top: 3, bottom: -3 });
+  key.shadow.bias = -0.0008;
+  key.shadow.radius = 3;
+  scene.add(key);
+
+  const rim = new THREE.DirectionalLight(0xc3111a, 1.5);
+  rim.position.set(-3.0, 0.5, -2.0);
+  scene.add(rim);
+
+  const fill = new THREE.DirectionalLight(0xffe9d8, 0.55);
+  fill.position.set(-1.2, -2.4, 2.2);
+  scene.add(fill);
+
+  scene.add(new THREE.AmbientLight(0xa08878, 0.85));
+
+  /* ---- 造书：圆角 + 分层装帧 ---- */
+  const loader = new THREE.TextureLoader();
+  const groups = [];
+
+  const R = 0.018; // 圆角半径
+
+  const pageTex = makePageEdgeTexture(renderer);
+  const makeBook = (meta, index) => makeBookShared({
+    THREE, RoundedBoxGeometry, loader, renderer, R,
+    pageTex, clothTex: makeClothTexture(renderer, meta.spine),
+  }, meta, index);
+
+  BOOKS_META.forEach((m, i) => {
+    const g = makeBook(m, i);
+    const spacing = 0.74;
+    /* 三本错开排列：各自露出书脊，不叠在一起 */
+    g.position.set((i - 1) * 0.14, (1 - i) * spacing, 0);
+
+    /* 入场：初始状态藏在下方、缩小、透明，稍后逐本浮起 */
+    g.userData.enterT = 0;
+    g.userData.enterDelay = i * 0.11;      // 三本依次进场，间隔收紧
+
+    /* 预先收集本组所有材质并开 transparent + opacity=0
+       （必须在 g 构建完成后做，否则 traverse 拿不到 mesh） */
+    g.userData.mats = [];
+    g.traverse((o) => {
+      if (o.isMesh && o.material && o.material.opacity !== undefined) {
+        o.material.transparent = true;
+        o.material.opacity = 0;
+        o.material.needsUpdate = true;
+        g.userData.mats.push(o.material);
+      }
+    });
+
+    g.position.y -= 0.55;
+    g.position.z -= 1.10;
+    g.scale.setScalar(0.82);
+    /* 参考图姿态：书横躺，长边水平铺开，书脊朝前(+Z)，三本上下叠
+       模型是竖立的(X宽1.44, Y高2.06, Z厚0.34)
+       rotateZ(90°) → Y(高)转到水平X轴，X(宽)转到竖直Y轴
+       此时书长边水平 ✓，厚度仍在 Z 方向（朝观察者）✓ */
+    /* 模型天生横躺，只需轻微俯角 */
+    /* 更侧向：书脊朝观察者，书名可读 */
+    g.rotation.set(LIST_ROT.x, LIST_ROT.y, LIST_ROT.z);
+    scene.add(g);
+    groups.push(g);
+  });
+
+  /* ---- 自适应：留出余量，避免书被裁切 ---- */
+  function resize() {
+    const w = parent.clientWidth, h = parent.clientHeight;
+    if (w < 2 || h < 2) return;
+    renderer.setSize(w, h, false);
+
+    // 舞台宽高比极宽：用固定焦距 + 手动缩放，比自动包围盒更可控
+    camera.aspect = w / h;
+    camera.fov = 30;
+
+    // 三本书叠起来的总高度约 2.1（单位），宽度约 1.5
+    // 目标：书占画面高度 80%
+    /* 全屏画布：书堆只占中央一块，别铺满整个视口 */
+    const contentH = 2.35;
+    const wantFill = 0.46;
+    const fovR = THREE.MathUtils.degToRad(camera.fov);
+    const dist = (contentH / wantFill) / (2 * Math.tan(fovR / 2));
+
+    camera.position.set(0, 0.16, dist);
+    camera.lookAt(0, 0.10, 0);
+    camera.updateProjectionMatrix();
+  }
+  const ro = new ResizeObserver(resize);
+  ro.observe(parent);
+  resize();
+
+  /* ---- 交互 ---- */
+  const ray = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  let dragging = false, moved = false, px = 0, py = 0;
+  let spin = LIST_ROT.y, hovered = -1;
+
+  function pick(ev) {
+    const r = canvas.getBoundingClientRect();
+    pointer.x = ((ev.clientX - r.left) / r.width) * 2 - 1;
+    pointer.y = -((ev.clientY - r.top) / r.height) * 2 + 1;
+    ray.setFromCamera(pointer, camera);
+    const hits = ray.intersectObjects(groups, true);
+    if (!hits.length) return -1;
+    let o = hits[0].object;
+    while (o) { if (o.userData && o.userData.index !== undefined) return o.userData.index; o = o.parent; }
+    return -1;
+  }
+
+  /* 详情态判断：进入详情后，这套列表交互必须让位给详情页的拖拽 */
+  const inDetailMode = () => document.body.classList.contains('detail-open');
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (inDetailMode()) return;      /* 详情态：交给详情页的监听处理 */
+    dragging = true; moved = false; px = e.clientX; py = e.clientY;
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (inDetailMode()) return;
+    if (dragging) {
+      const dx = e.clientX - px;
+      if (Math.abs(dx) > 2) moved = true;
+      spin += dx * 0.006;
+      spin = Math.max(-0.88, Math.min(0.22, spin));
+      px = e.clientX; py = e.clientY;
+      canvas.style.cursor = 'grabbing';
+    } else {
+      hovered = pick(e);
+      canvas.style.cursor = hovered >= 0 ? 'pointer' : 'grab';
+    }
+  });
+  canvas.addEventListener('pointerup', (e) => {
+    if (inDetailMode()) return;
+    dragging = false;
+    canvas.style.cursor = 'grab';
+    try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+    if (!moved) {
+      const i = pick(e);
+      if (i >= 0 && typeof openDetail === 'function') openDetail(i);
+    }
+  });
+  canvas.addEventListener('pointerleave', () => { hovered = -1; dragging = false; });
+
+  /* ---- 渲染 ---- */
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let t = 0;
+  /* ============================================================
+     呼吸感：三层不同频率的正弦叠加 + 每本独立相位
+     —— 单层 sin 会让三本同步摆动（像机械臂）；
+        三层叠加才有自然的、不重复的微晃。
+     ============================================================ */
+  function breathe(i, time) {
+    // 每本相位错开，避免整齐划一
+    const ph = i * 2.1;
+    return {
+      // 侧向微转：主频 0.42 + 次频 0.23 + 微频 0.11
+      /* 参考页实测为静态（0 像素波动）。
+         这里只保留极轻微的一层，避免死板，但幅度是原来的 1/5。 */
+      yaw: Math.sin(time * 0.18 + ph) * 0.014,
+      pitch: Math.sin(time * 0.13 + ph * 1.3) * 0.006,
+      float: Math.sin(time * 0.15 + ph * 1.1) * 0.012
+           + Math.sin(time * 0.19 + ph * 0.5) * 0.030,
+      // 极轻微侧倾
+      roll: Math.sin(time * 0.27 + ph * 1.9) * 0.014,
+    };
+  }
+
+  /* 过渡飞行与退场状态（必须在 tick 之前声明） */
+  let flyT = 0, flyIdx = -1, flying = false;
+  let exiting = false, exitT = 0;
+  let recalling = false, recallT = 0;
+  let enterStartT = null;   /* 入场动画起点（相对计时用） */
+  let enterArmed = false;    /* true 时才允许入场动画推进 */
+
+  let lastTs = null;
+  function tick(ts) {
+    requestAnimationFrame(tick);
+
+    /* 用真实时间推进：避免高刷屏上动画翻倍
+       ts 在首次手动调用时可能缺失，用 performance.now() 兜底 */
+    const now = (typeof ts === 'number' && isFinite(ts)) ? ts : performance.now();
+    if (lastTs === null) lastTs = now;
+    const dt = Math.min(0.05, Math.max(0, (now - lastTs) / 1000));
+    lastTs = now;
+    if (!reduce) t += dt;
+
+    /* ---- 详情态：morph 接管整屏（内部会 render） ---- */
+    if (window.__detail3d && window.__detail3d.active) {
+      window.__detail3d.frame(dt);
+      return;
+    }
+
+    /* ---- 收回：书从详情页姿态平滑回到列表姿态 ---- */
+    if (recalling) {
+      recallT = Math.min(1, recallT + dt * 1.1);
+      const e2 = -(Math.cos(Math.PI * recallT) - 1) / 2;   // easeInOutSine
+
+      /* 收回：位置/缩放/透明度/旋转全部逐帧插值，
+         旋转用四元数 slerp（不会走错方向） */
+      const k = 0.10 + e2 * 0.16;
+      const _qTarget = new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(LIST_ROT.x, LIST_ROT.y, LIST_ROT.z)
+      );
+
+      groups.forEach((g, i) => {
+        const tgtX = (i - 1) * 0.14;
+        const tgtY = (1 - i) * 0.74;
+
+        g.position.x += (tgtX - g.position.x) * k;
+        g.position.y += (tgtY - g.position.y) * k;
+        g.position.z += (0 - g.position.z) * k;
+
+        /* 旋转也插值，否则会一直停在详情姿态直到硬复位 */
+        g.quaternion.slerp(_qTarget, k);
+
+        g.scale.setScalar(g.scale.x + (1 - g.scale.x) * k);
+
+        (g.userData.mats || []).forEach((m) => {
+          m.opacity = Math.min(1, m.opacity + dt * 2.2);
+        });
+      });
+
+      if (recallT >= 1) hardReset();
+      renderer.render(scene, camera);
+      return;
+    }
+
+
+    /* ---- 退场动画：倒放入场（下沉 + 缩小 + 淡出） ---- */
+    if (exiting) {
+      exitT = Math.min(1, exitT + dt * 0.9);
+      const ease = -(Math.cos(Math.PI * exitT) - 1) / 2;   // easeInOutSine
+
+      groups.forEach((g, i) => {
+        const baseX = (i - 1) * 0.14;
+        const baseY = (1 - i) * 0.74;
+        g.position.x = baseX;
+        g.position.y = baseY - 0.55 * ease;
+        g.position.z = 0 - 1.15 * ease;
+        /* 关键：从 1.0 起缩，不继承 flyIn 留下的 1.34，否则比例被拉歪 */
+        g.scale.setScalar(1 - 0.20 * ease);
+        g.rotation.x = 0.34 + 0.12 * ease;
+        g.rotation.y = -0.52 - 0.14 * ease;
+
+        const op = 1 - Math.min(1, ease / 0.55);
+        (g.userData.mats || []).forEach((m) => { m.opacity = op; });
+      });
+
+      if (exitT >= 1) hardReset();
+      renderer.render(scene, camera);
+      return;
+    }
+
+    /* ---- 入场动画：逐本浮起 + 放大 + 淡入 ---- */
+    /* 入场用相对时间：从 3D 首帧算起，避免被开场延迟吃掉动画 */
+    if (enterStartT === null) enterStartT = t;
+    const enterClock = t - enterStartT;
+
+    let allEntered = true;
+    groups.forEach((g, i) => {
+      if (g.userData.enterT >= 1) return;
+      allEntered = false;
+
+      const delay = g.userData.enterDelay || 0;
+      // 用全局 t 累计，超过延迟才开始
+      if (!enterArmed) return;
+      if (enterClock < delay) return;
+
+      g.userData.enterT = Math.min(1, g.userData.enterT + dt * 0.95);
+      const e = g.userData.enterT;
+      /* easeInOutSine：两端都平缓，消除"弹出来"的感觉 */
+      const ease = -(Math.cos(Math.PI * e) - 1) / 2;
+
+      const baseX = (i - 1) * 0.14;
+      const baseY = (1 - i) * 0.74;
+      g.position.x = baseX;
+      g.position.y = baseY - 0.55 * (1 - ease);
+      g.position.z = 0 - 1.10 * (1 - ease);
+      g.scale.setScalar(0.82 + 0.18 * ease);
+      g.rotation.x = LIST_ROT.x - 0.04 * (1 - ease);
+      g.rotation.y = LIST_ROT.y + 0.10 * (1 - ease);
+      g.rotation.z = 0;
+
+      /* 淡入 */
+      const op = Math.min(1, ease / 0.55);
+      (g.userData.mats || []).forEach((m) => { m.opacity = op; });
+    });
+    if (!allEntered) {
+      renderer.render(scene, camera);
+      return;
+    }
+
+    groups.forEach((g, i) => {
+      const isHover = hovered === i;
+      const b = reduce ? { yaw: 0, pitch: 0, float: 0, roll: 0 } : breathe(i, t);
+
+      /* ---- 悬停因子：0→1 平滑过渡（临界阻尼式缓动）----
+         比直接布尔切换柔和得多，也不会过冲。 */
+      const hPrev = g.userData.hoverH || 0;
+      const hTarget = isHover ? 1 : 0;
+      // dt 已换算为秒，这里把"每秒收敛速度"定为 ~7
+      const hK = 1 - Math.exp(-dt * 7);
+      const h = hPrev + (hTarget - hPrev) * hK;
+      g.userData.hoverH = h;
+
+      // 用 easeOut 曲线让起步更柔
+      const hEase = h * h * (3 - 2 * h);
+
+      // 基础姿态 + 呼吸偏移（悬停时轻微前倾、上浮、左移）
+      g.rotation.x = (0.26 + hEase * 0.055) + b.pitch;
+      g.rotation.y = LIST_ROT.y + b.yaw - hEase * 0.055;
+      g.rotation.z = b.roll;
+
+      const baseX = (i - 1) * 0.14;
+      const targetX = baseX - hEase * 0.045;
+      g.position.x += (targetX - g.position.x) * 0.10;
+
+      const baseY = (1 - i) * 0.74 + hEase * 0.10 + b.float;
+      g.position.y += (baseY - g.position.y) * 0.10;
+
+      /* 悬停时略微放大，增强"被拿起来"的感觉 */
+      const targetScale = 1 + hEase * 0.035;
+      g.scale.setScalar(g.scale.x + (targetScale - g.scale.x) * 0.12);
+    });
+
+    renderer.render(scene, camera);
+  }
+  tick();
+
+  /* 过渡：被点的书飞向镜头 */
+
+  function flyIn(index) {
+    flyIdx = index;
+    flyT = 0;
+    flying = true;
+    /* 清掉上一次的插值缓存 */
+    groups.forEach((g) => { g.userData.qFrom = null; g.userData.qTo = null; });
+  }
+  /* 退出动画的复位函数（状态变量已在 tick 前声明） */
+
+  /* ============================================================
+     收回：关闭详情页时，书从"飞出的姿态"平滑缩回列表位置
+     —— 不重播入场，不做二次发光，只做一次收拢
+     ============================================================ */
+
+  function flyCancel() {
+    /* 开始收回动画（不是瞬间归位，也不是重播入场） */
+    flying = false;
+    flyIdx = -1;
+    flyT = 0;
+    recalling = true;
+    recallT = 0;
+  }
+
+  function hardReset() {
+    recalling = false;
+    exiting = false;
+    exitT = 0;
+    recallT = 0;
+    groups.forEach((g, i) => {
+      g.scale.setScalar(1);
+      g.visible = true;
+      g.position.set((i - 1) * 0.14, (1 - i) * 0.74, 0);
+      /* 不硬设 rotation：让主循环的呼吸逻辑自然收敛，避免跳变 */
+      g.quaternion.identity();
+      (g.userData.mats || []).forEach((m) => { m.opacity = 1; });
+      g.userData.enterT = 1;   /* 关键：保持"已入场"，不重播开头 */
+    });
+  }
+
+  /* 兼容旧调用 */
+  function flyReset() { flyCancel(); }
+
+  /* 相机初始（列表构图）值，供详情 morph 插值 */
+  const __listCam = {
+    x: camera.position.x, y: camera.position.y, z: camera.position.z,
+    lookY: 0,
+  };
+  camera.userData.listX = __listCam.x;
+  camera.userData.listY = __listCam.y;
+  camera.userData.listZ = __listCam.z;
+  camera.userData.listLookY = __listCam.lookY;
+
+  /* 列表构图下每本书的姿态（与 tick 里的布局常量一致） */
+  function listPose(i) {
+    return {
+      pos: new THREE.Vector3((i - 1) * 0.14, (1 - i) * 0.74, 0),
+      quat: new THREE.Quaternion().setFromEuler(new THREE.Euler(0.26, Math.PI - 0.14, 0)),
+    };
+  }
+
+  window.__books3d = {
+    arm() { enterArmed = true; enterStartT = null; },   /* 开始播入场 */
+    disarm() { enterArmed = false; },
+    flyIn, flyReset, flyCancel, hardReset, listPose,
+    get exiting() { return exiting; },
+    scene, camera, groups, renderer,
+    // 验证用：返回每本书的屏幕包围盒（真实投影，不手算）
+    measure() {
+      const cv = canvas;
+      const W = cv.clientWidth, H = cv.clientHeight;
+      return groups.map((g, i) => {
+        const box = new THREE.Box3().setFromObject(g);
+        let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+        for (const x of [box.min.x, box.max.x])
+          for (const y of [box.min.y, box.max.y])
+            for (const z of [box.min.z, box.max.z]) {
+              const v = new THREE.Vector3(x, y, z).project(camera);
+              const sx = (v.x * 0.5 + 0.5) * W;
+              const sy = (-v.y * 0.5 + 0.5) * H;
+              minX = Math.min(minX, sx); maxX = Math.max(maxX, sx);
+              minY = Math.min(minY, sy); maxY = Math.max(maxY, sy);
+            }
+        return {
+          book: i,
+          box: [Math.round(minX), Math.round(minY), Math.round(maxX), Math.round(maxY)],
+          fullyVisible: minX >= -1 && maxX <= W + 1 && minY >= -1 && maxY <= H + 1,
+          clippedTop: minY < -1, clippedBottom: maxY > H + 1,
+        };
+      });
+    },
+  };
+})();
+  (function initMorph() {
+    const api = window.__books3d;
+    if (!api) return;
+
+    const { scene, camera, groups, renderer } = api;
+
+    /* 详情构图参数：按视口比例动态计算，宽屏左右排、窄屏上下排 */
+    const BOOK_H = 2.12;       // 书立起后的高度
+    const BOOK_W = 1.44;       // 立起后的横向占用
+
+    let DETAIL_CAM_Z = 6.09;
+    let DETAIL_BOOK_X = -0.68;
+    let DETAIL_BOOK_Y = 0.02;
+
+    function recomputeDetail() {
+      const w = renderer.domElement.clientWidth;
+      const h = renderer.domElement.clientHeight;
+      if (w < 2 || h < 2) return;
+
+      const aspect = w / h;
+      const fovR = (camera.fov * Math.PI) / 180;
+      const tanHalf = Math.tan(fovR / 2);
+
+      const isNarrow = aspect < 1.0;   // 竖屏/窄屏
+
+      if (isNarrow) {
+        /* 窄屏：书在上、文字在下。书占屏高 ~34% */
+        const fill = 0.34;
+        DETAIL_CAM_Z = (BOOK_H / fill) / (2 * tanHalf);
+        DETAIL_BOOK_X = 0;
+        DETAIL_BOOK_Y = 0.46;          // 抬高，给下方文字让位
+      } else {
+        /* 宽屏：书在左、文字在右。书占屏高 ~52% */
+        const fill = 0.52;
+        DETAIL_CAM_Z = (BOOK_H / fill) / (2 * tanHalf);
+
+        const visH = 2 * DETAIL_CAM_Z * tanHalf;
+        const visW = visH * aspect;
+        /* 书放屏幕左侧 26% 处 */
+        const targetNDCx = aspect > 1.35 ? -0.30 : -0.24;
+        DETAIL_BOOK_X = targetNDCx * (visW / 2);
+        DETAIL_BOOK_Y = 0.02;
+
+        /* 防出界：书左缘不能超过屏幕左缘并留 6% 余量 */
+        const margin = visW * 0.06;
+        const minX = -visW / 2 + BOOK_W / 2 + margin;
+        if (DETAIL_BOOK_X < minX) DETAIL_BOOK_X = minX;
+      }
+    }
+    recomputeDetail();
+    window.addEventListener('resize', () => { recomputeDetail(); });
+
+    /* 中间姿态：立起但书脊仍朝观察者（延续列表页的视线） */
+    const SPINE_QUAT = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(0, 0, -Math.PI / 2, 'XYZ')
+    );
+
+    /* 终态：立起，封面朝观察者 */
+    const DETAIL_QUAT = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(-Math.PI / 2, 0, -Math.PI / 2, 'ZXY')
+    );
+
+    /* 翻面用的中间量：把 DETAIL_QUAT 绕世界 Y 再转 -90°，得到"书脊侧对"的过渡 */
+    const FLIP_Q = new THREE.Quaternion().setFromAxisAngle(
+      new THREE.Vector3(0, 1, 0), -Math.PI / 2
+    );
+
+    let morph = 0;              // 0=列表 1=详情
+    let target = 0;
+    let morphStart = 0;         // 本次过渡的起点
+    let morphT = 1;             // 过渡进度 0→1（1 表示已停稳）
+    let activeIndex = 0;
+    let camListZ = null, camListY = null;
+
+    /* 拖拽 */
+    let dragging = false, dragY = 0, dragX = 0, velY = 0, velX = 0;
+    let px = 0, py = 0;
+
+    const cv = renderer.domElement;
+    cv.addEventListener('pointerdown', (e) => {
+      if (morph < 0.5) return;
+      dragging = true; px = e.clientX; py = e.clientY;
+      velY = 0; velX = 0;
+      cv.setPointerCapture(e.pointerId);
+    });
+    cv.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - px, dy = e.clientY - py;
+      px = e.clientX; py = e.clientY;
+      dragY += dx * 0.008;
+      dragX = Math.max(-0.85, Math.min(0.85, dragX + dy * 0.008));
+      velY = dx * 0.008; velX = dy * 0.008;
+    });
+    const stop = (e) => {
+      dragging = false;
+      try { cv.releasePointerCapture(e.pointerId); } catch (_) {}
+    };
+    cv.addEventListener('pointerup', stop);
+    cv.addEventListener('pointercancel', stop);
+
+    function tick(dt) {
+      if (camListZ === null) {
+        camListZ = camera.position.z;
+        camListY = camera.position.y;
+      }
+
+      /* ---- 定长过渡：0.9 秒，起止都有缓动，过程可感知 ---- */
+      if (morphT < 1 && morphT >= 0) {
+        const dir = target > morph ? 1 : -1;
+        morphT = Math.min(1, morphT + dt / 0.9);
+        // easeInOutCubic
+        const e = morphT < 0.5
+          ? 4 * morphT * morphT * morphT
+          : 1 - Math.pow(-2 * morphT + 2, 3) / 2;
+        morph = morphStart + (target - morphStart) * e;
+        if (morphT >= 1) morph = target;
+      }
+
+      const m = morph;
+
+      if (!dragging && m > 0.5) {
+        velY *= 0.93; velX *= 0.93;
+        dragY += velY;
+        dragX = Math.max(-0.85, Math.min(0.85, dragX + velX));
+      }
+
+      groups.forEach((g, i) => {
+        const isActive = i === activeIndex;
+        const mats = g.userData.mats || [];
+
+        if (isActive) {
+          const lp = api.listPose(i);
+
+          /* 位置：列表位 → 详情位 */
+          const tx = lp.pos.x + (DETAIL_BOOK_X - lp.pos.x) * m;
+          const ty = lp.pos.y + (DETAIL_BOOK_Y - lp.pos.y) * m;
+          const tz = lp.pos.z + (0 - lp.pos.z) * m;
+          g.position.set(tx, ty, tz);
+
+          /* 旋转：用四元数 slerp（避免欧拉插值经过退化角） */
+          /* ============================================================
+             详情姿态由基向量直接构造（离线验证三个轴全部达标）：
+               模型X(书长) → 世界Y(上)    模型Y(封面) → 世界Z(相机)
+               模型Z(书脊) → 世界X(右)
+             四元数 = (0.5, 0.5, 0.5, 0.5)
+             从列表姿态 slerp 过去，路径连续、不经过退化角。
+             ============================================================ */
+          const _m = new THREE.Matrix4().makeBasis(
+            new THREE.Vector3(0, 1, 0),
+            new THREE.Vector3(0, 0, 1),
+            new THREE.Vector3(1, 0, 0)
+          );
+          const qTarget = new THREE.Quaternion().setFromRotationMatrix(_m);
+          let q = lp.quat.clone().slerp(qTarget, m);
+
+          /* 只叠加用户拖拽（不再加固定的 0.28 侧转，那会把书转歪） */
+          if (m > 0.01 && (Math.abs(dragY) > 1e-4 || Math.abs(dragX) > 1e-4)) {
+            const qDrag = new THREE.Quaternion().setFromAxisAngle(
+              new THREE.Vector3(0, 1, 0), dragY * m
+            );
+            const qTilt = new THREE.Quaternion().setFromAxisAngle(
+              new THREE.Vector3(1, 0, 0), dragX * m
+            );
+            q = qDrag.multiply(qTilt).multiply(q);
+          }
+          g.quaternion.copy(q);
+          g.scale.setScalar(1);
+          mats.forEach(mt => { mt.opacity = 1; });
+
+        } else {
+          /* 其它两本：淡出并后退 */
+          const fade = Math.max(0, 1 - m * 1.8);
+          g.scale.setScalar(Math.max(0.001, fade));
+          mats.forEach(mt => { mt.opacity = fade; });
+          g.position.z = -2.2 * m;
+        }
+      });
+
+      /* 相机：列表 Z → 详情 Z */
+      camera.position.z = camListZ + (DETAIL_CAM_Z - camListZ) * m;
+      camera.position.y = camListY + (0.08 - camListY) * m;
+
+      renderer.render(scene, camera);
+    }
+
+    detailApi = {
+      scene, camera, renderer,
+      get book() { return groups[activeIndex] || null; },
+      get morph() { return morph; },
+      get active() { return target > 0 || morph > 0.002; },
+      build(index) {
+        activeIndex = index;
+        morphStart = morph;
+        morphT = 0;
+        target = 1;
+        dragY = 0; dragX = 0; velY = 0; velX = 0;
+        document.body.classList.add('detail-open');
+      },
+      exit() {
+        morphStart = morph;
+        morphT = 0;
+        target = 0;
+        document.body.classList.remove('detail-open');
+      },
+      frame(dt) { tick(dt); },
+    };
+    window.__detail3d = detailApi;
+  })();
+});
+  /* ============================================================
+     单画布方案：详情页不另起场景，直接复用列表页的
+     scene / renderer / groups，只搬相机与书的位置。
+     —— 这样从头到尾都是同一个模型，没有任何接缝。
+     ============================================================ */
+  /* ============================================================
+     详情页独立渲染（与列表页共用 makeBook，但场景独立）
+     ============================================================ */
+  /* ============================================================
+     详情：复用主画布的 scene / renderer / groups
+     同一本书从列表位置平滑变换到详情位置，没有第二个场景
+     ============================================================ */
+  let detailApi = null;
+
+
+
+/* 入场：深色带收走（承接首页的扫过） */
+(function () {
+  var wipe = document.getElementById('pageWipe');
+  var band = document.getElementById('pageWipeBand');
+  if (!wipe || !band) return;
+
+  var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduce) { wipe.remove(); return; }
+
+  /* 入场：黑幕直接淡出，不做高度收缩（那样会像"从下往上退"） */
+  requestAnimationFrame(function () {
+    requestAnimationFrame(function () {
+      wipe.style.transition = 'opacity 420ms ease-out';
+      wipe.style.opacity = '0';
+      setTimeout(function () { wipe.remove(); }, 450);
+    });
+  });
+})();
+</script>
+
+</div>
+
+<script>
+/* 场景切换 */
+(function () {
+  var home = document.getElementById('sceneHome');
+  var books = document.getElementById('sceneBooks');
+  var inBooks = false;
+
+  window.__goBooks = function () {
+    if (inBooks) return;
+    inBooks = true;
+    books.classList.add('active');
+    home.classList.remove('active');
+    document.body.classList.add('books-mode');
+    window.scrollTo(0, 0);
+    if (window.__books3d && window.__books3d.arm) window.__books3d.arm();
+};
+
+  window.__goHome = function () {
+    if (!inBooks) return;
+    inBooks = false;
+    home.classList.add('active');
+    books.classList.remove('active');
+    document.body.classList.remove('books-mode');
+    window.scrollTo(0, 0);
+  };
+})();
+/* 返回按钮 → 切回首页场景 */
+(function () {
+  ['backHome', 'brandHome'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('click', function (e) {
+      e.preventDefault();
+      if (window.__goHome) window.__goHome();
+    });
+  });
+})();
+/* 聆听神祗 → 切到书页场景 */
+(function () {
+  var btn = document.getElementById('listenBtn');
+  if (!btn) return;
+  btn.addEventListener('click', function (e) {
+    e.preventDefault();
+    if (window.__goBooks) window.__goBooks();
+  });
+})();
+</script>
+
+<script>
+/* 字体兜底：1.6 秒没加载完就移除，避免文字长时间处于回退状态 */
+window.__fontTimer = setTimeout(function () {
+  var el = document.getElementById('fontCss');
+  if (el) el.remove();
+}, 1600);
+</script>
+
+<script>
+(function () {
+"use strict";
+
+/* 导航 */
+const nav = document.getElementById('nav');
+const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 24);
+onScroll();
+addEventListener('scroll', onScroll, { passive: true });
+
+/* 入场 */
+const io = new IntersectionObserver((entries) => {
+  entries.forEach((e) => {
+    if (!e.isIntersecting) return;
+    e.target.classList.add('in');
+    io.unobserve(e.target);
+  });
+}, { rootMargin: '0px', threshold: 0.05 });
+[...document.querySelectorAll('.reveal')].forEach((el, i) => {
+  el.style.transitionDelay = (i % 4) * 100 + 'ms';
+  io.observe(el);
+});
+
+/* 三本书的数据 —— 详情页用的完整正文 */
+const BOOKS = [
+  {
+    vol: 'Vol. I', title: '阴翳中的圣所',
+    eng: 'The Chapel in Dusk',
+    author: 'Viper/璃砚', 
+    band: 'rgba(195,17,26,.80)',
+    // 详情页背景：由该书封面衍生（深红 → 暖灰粉）
+    detailBg: '#12080a',
+    detailGlow: 'rgba(195,17,26,.42)',
+    transBg: '#3a2429',
+    face: 'linear-gradient(150deg,#1a1410 0%,#3d342a 52%,#705f4c 100%)',
+    img: 'assets/cover-sanctuary.jpg',
+    body: '自创世的誓约里降生，世人却执着于他与生俱来的轮廓，为他冠上<strong>罪的称谓</strong><br>他携缄默的神性栖于沉寂之中，这份爱即是<strong>盟约</strong>，一旦应允，永无背弃<br>与他相伴，是一场<strong>自愿的朝圣</strong>，踏进来，就不必寻归途。', link: 'https://www.kdocs.cn/l/cedbMnBj9xrf'
+  },
+  {
+    vol: 'Vol. II', title: '骨与血的颂歌',
+    eng: 'A Hymn of Bone and Blood',
+    author: 'Viper/璃砚', 
+    band: 'rgba(141,11,18,.88)',
+    detailBg: '#140a0c',
+    detailGlow: 'rgba(141,11,18,.40)',
+    transBg: '#48202a',
+    face: 'linear-gradient(150deg,#2a0608 0%,#8d0b12 52%,#43141b 100%)',
+    img: 'assets/cover-hymn.jpg',
+    body: '世人祈求<strong>赤裸无掩</strong>的赤诚，她却于疏离的间隙凝望灵魂<br>不妄作挽留，不轻易布施真心，用<strong>自持</strong>封存心底沉敛的执念<br>倘若你甘愿越过她立下的界碑，便要知晓，往后所有起落行止，皆在她沉静的谛视之中。', link: 'https://www.kdocs.cn/l/cheUIXAf0W1f'
+  },
+  {
+    vol: 'Vol. III', title: '神祗的沉眠',
+    eng: 'The Sleep of Gods',
+    author: 'Viper/璃砚', 
+    band: 'rgba(60,20,26,.82)',
+    detailBg: '#0d0809',
+    detailGlow: 'rgba(80,26,34,.34)',
+    transBg: '#2e2329',
+    face: 'linear-gradient(150deg,#0f0c0e 0%,#2a1f24 52%,#5b434c 100%)',
+    img: 'assets/cover-sleep.jpg',
+    body: '世人将<strong>倾尽袒露</strong>奉为情爱的圣证，<br>我独信持守分寸的<strong>凝睇</strong>，才是至高的观照<br>你既踏临我的界域，便该知晓<br>你一切行止浮沉，尽在我沉静的谛视之中。', link: 'https://www.kdocs.cn/l/cgb9yIVtKp4H'
+  }
+];
+
+/* 详情页 */
+const modal = document.getElementById('modal');
+const modalClose = document.getElementById('modalClose');
+// detailBook 已由 WebGL 画布取代
+let lastFocused = null;
+
+function setText(id, v) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = v;
+}
+
+let transTimer = null;
+let isOpen = false;
+
+function openDetail(i) {
+  const b = BOOKS[i];
+  if (!b || isOpen) return;
+  isOpen = true;
+  clearTimeout(transTimer);
+  lastFocused = document.activeElement;
+
+  /* ---- 填充内容 ---- */
+  setText('detailVol', b.vol);
+  setText('detailTitle', b.title);
+  setText('detailAuthor', b.author);
+  const ttl = document.getElementById('detailFaceTitle');
+  if (ttl && ttl.firstChild) ttl.firstChild.nodeValue = b.title;
+  setText('detailFaceEng', b.eng);
+  document.getElementById('detailBody').innerHTML = b.body;
+  const buyBtn = document.querySelector('.detail-buy');
+  if (buyBtn) buyBtn.dataset.link = b.link || '';
+
+  // 详情页书影由 three.js 渲染，这里不再设置 CSS 变量
+
+  /* ---- 主题色 ---- */
+  modal.style.setProperty('--detail-bg', b.detailBg);
+  modal.style.setProperty('--detail-glow', b.detailGlow);
+  document.body.style.setProperty('--trans-bg', b.transBg);
+
+  document.body.classList.add('transitioning');
+
+  /* 单画布：立刻开始 morph（书自己从列表位走到详情位），
+     同时让详情页的文字层淡入——两者同步，没有先后交接 */
+  if (window.__detail3d) window.__detail3d.build(i);
+
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---- 深色带扫过（参考 noho）：
+     阶段1 (0~380ms) : 带子从底部长到满屏
+     阶段2           : 满屏瞬间切换内容
+     阶段3 (380~760ms): 带子从顶部收走，露出详情页 ---- */
+  const wipe = document.getElementById('wipe');
+  const band = document.getElementById('wipeBand');
+
+  function showDetail() {
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+    modal.scrollTop = 0;
+    modalClose.focus();
+  }
+
+  /* 不做黑屏转场：直接打开 */
+  transTimer = setTimeout(showDetail, 0);
+}
+
+function closeDetail() {
+  clearTimeout(transTimer);
+
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const wipe = document.getElementById('wipe');
+  const band = document.getElementById('wipeBand');
+
+  function doClose() {
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    document.body.classList.remove('transitioning');
+    document.body.classList.remove('detail-open');
+    if (window.__detail3d) window.__detail3d.exit();
+  }
+
+  if (reduce || !wipe || !band) {
+    doClose();
+    isOpen = false;
+    if (lastFocused) lastFocused.focus();
+    return;
+  }
+
+  /* 不做黑屏转场：直接关闭 */
+  doClose();
+  isOpen = false;
+  if (lastFocused) lastFocused.focus();
+}
+
+
+document.querySelectorAll('.book').forEach((el) => {
+  el.addEventListener('click', () => openDetail(Number(el.dataset.book)));
+});
+modalClose.addEventListener('click', closeDetail);
+addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && modal.classList.contains('open')) closeDetail();
+});
+
+
+})();
+
+/* 背景音乐：按钮控制播放/暂停 */
+(function () {
+  var btn = document.getElementById('bgm');
+  if (!btn) return;
+  var audio = new Audio('assets/bgm.mp3');
+  audio.loop = true;
+  audio.preload = 'auto';
+  audio.volume = 0.55;
+  var playing = false;
+
+  function setUI(on) {
+    playing = on;
+    btn.classList.toggle('playing', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.setAttribute('aria-label', on ? '关闭背景音乐' : '播放背景音乐');
+    btn.setAttribute('title', on ? '关闭背景音乐' : '播放背景音乐');
+  }
+  function fadeTo(target, ms) {
+    var start = audio.volume, t0 = performance.now();
+    (function step(now) {
+      var k = Math.min(1, (now - t0) / ms);
+      audio.volume = start + (target - start) * k;
+      if (k < 1) requestAnimationFrame(step);
+    })(performance.now());
+  }
+  function play() {
+    var p = audio.play();
+    if (p && p.then) {
+      p.then(function () { setUI(true); fadeTo(0.55, 1200); })
+       .catch(function () { setUI(false); });
+    } else { setUI(true); }
+  }
+  function pause() { audio.pause(); setUI(false); }
+
+  btn.addEventListener('click', function () { playing ? pause() : play(); });
+
+  addEventListener('keydown', function (e) {
+    if ((e.key === 'm' || e.key === 'M') && !/input|textarea/i.test(e.target.tagName)) {
+      playing ? pause() : play();
+    }
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden && playing) pause();
+  });
+
+  setUI(false);
+})();
+
+/* 首页逐次入场：开场后（或无开场时直接）启动 */
+(function () {
+  var home = document.getElementById('sceneHome');
+  if (!home) return;
+  var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduce) { home.classList.add('entered'); return; }
+  /* 无开场动画时 300ms 后启动（等首帧绘制完） */
+  var delay = 300;
+  window.__enterAt = performance.now() + delay;
+  setTimeout(function () {
+    home.classList.add('entered');
+    window.__enteredAt = performance.now();
+  }, delay);
+})();
+
+/* 开场：哥特圣所 */
+(function () {
+  var boot = document.getElementById('boot');
+  if (!boot) return;
+  document.body.classList.add('boot-live');
+
+  var num = document.getElementById('bNum');
+  var vbar = document.getElementById('bVbar');
+  var status = document.getElementById('bStatus');
+  var freqHud = document.getElementById('bFreqHud');
+  var clock = document.getElementById('bClock');
+  var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* 灰烬 */
+  (function makeAsh() {
+    var ash = document.getElementById('bAsh');
+    if (!ash || reduce) return;
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < 42; i++) {
+      var el = document.createElement('i');
+      var dur = 14 + Math.random() * 16;
+      el.style.left = (Math.random() * 100) + '%';
+      el.style.top = (-Math.random() * 20) + 'vh';
+      el.style.opacity = (0.25 + Math.random() * 0.55).toFixed(2);
+      el.style.transform = 'scale(' + (0.6 + Math.random() * 1.4).toFixed(2) + ')';
+      el.style.animationDuration = dur.toFixed(1) + 's';
+      el.style.animationDelay = (-Math.random() * dur).toFixed(1) + 's';
+      if (Math.random() > 0.72) {
+        el.style.background = 'rgba(255,170,110,.75)';
+        el.style.boxShadow = '0 0 6px rgba(255,150,90,.8)';
+      }
+      frag.appendChild(el);
+    }
+    ash.appendChild(frag);
+  })();
+
+  function reveal() {
+    var home = document.getElementById('sceneHome');
+    boot.classList.add('done');
+    if (home) setTimeout(function () { home.classList.add('entered'); }, 180);
+    setTimeout(function () {
+      boot.style.display = 'none';
+      if (boot.parentNode) boot.parentNode.removeChild(boot);
+      window.dispatchEvent(new CustomEvent('boot:done'));
+    }, 1150);
+  }
+
+  if (reduce) { reveal(); return; }
+
+  /* 时辰 */
+  var ROMAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
+  setInterval(function () {
+    var h = new Date().getHours() % 12;
+    if (clock) clock.textContent = 'HORA · ' + ROMAN[h];
+  }, 1000);
+
+  /* 圣光强度 */
+  setInterval(function () {
+    var f = (12.4 + (Math.random() - 0.5) * 0.9).toFixed(1);
+    if (freqHud) freqHud.textContent = 'LUX · ' + f;
+  }, 900);
+
+  /* 计数 */
+  var statuses = [
+    'APERITUR SANCTUM',
+    'RECITANTUR PRECES',
+    'ACCENDUNTUR CEREI',
+    'REVELATUR LUMEN',
+    'INTRAT ANIMA'
+  ];
+  var DURATION = 4400;
+  var startedAt = performance.now();
+
+  function tick(now) {
+    var p = Math.min(1, (now - startedAt) / DURATION);
+    var eased = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+    var v = Math.round(eased * 100);
+    if (num) num.textContent = String(v).padStart(2, '0');
+    if (vbar) vbar.style.height = v + '%';
+    var si = Math.min(statuses.length - 1, Math.floor(p * statuses.length));
+    if (status && status.textContent !== statuses[si]) status.textContent = statuses[si];
+
+    if (p < 1) { requestAnimationFrame(tick); }
+    else {
+      if (num) num.textContent = '100';
+      if (vbar) vbar.style.height = '100%';
+      if (status) status.textContent = 'INTRATIO CONCESSA';
+      setTimeout(reveal, 380);
+    }
+  }
+  requestAnimationFrame(tick);
+})();
+</script>
+
+</body>
+</html>
