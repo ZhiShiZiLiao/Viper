@@ -7,11 +7,13 @@
 
 <style>
   html,body{background:#020101;margin:0}
-  /* 首屏防闪遮罩：2 帧后自动淡出，不依赖 JS */
+  /* 首屏防闪遮罩：等字体就绪后由 JS 撤除（最多 1.2s），杜绝字形跳变闪屏 */
   body::before{
     content:"";position:fixed;inset:0;z-index:10001;
     background:#020101;pointer-events:none;
-    animation:fadeBoot .5s ease .15s forwards;
+    /* 等 boot 层完成首帧布局后再撤，避免"黑→透明→黑"闪两次 */
+    /* 默认兜底淡出 */
+    animation:fadeBoot .28s ease .06s forwards;
   }
   @keyframes fadeBoot{to{opacity:0;visibility:hidden}}
 </style>
@@ -19,7 +21,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=Noto+Serif+SC:wght@400;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=Noto+Serif+SC:wght@400;600;700&display=optional"
       media="print" onload="this.media='all'">
 
 <script type="importmap">
@@ -43,7 +45,7 @@
   --bone:#f2ece3;
   --ash:#9b9188;
   /* 雕塑图：把图片放到同目录并命名 statue.png 即可自动生效 */
-  --statue:url("assets/statue.png");
+  --statue:url("assets/statue.webp");
 }
 *,*::before,*::after{box-sizing:border-box}
 html,body{margin:0;height:100%}
@@ -80,7 +82,7 @@ body{
   top:auto;
   height:52%;
   z-index:0;
-  background-image:url("assets/mountain-wide.png");
+  background-image:url("assets/mountain-wide.webp");
   background-size:118% auto;
   background-position:center bottom;
   background-repeat:no-repeat;
@@ -1006,7 +1008,7 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--bone);outline-offse
   --cover-filter: saturate(.68) contrast(1.08) brightness(1.05);
   --cover-bg:
     linear-gradient(150deg, rgba(195,17,26,.34) 0%, rgba(29,6,8,.44) 100%),
-    url("assets/cover-sanctuary.jpg") center 52%/cover no-repeat;
+    url("assets/cover-sanctuary.webp") center 52%/cover no-repeat;
   --cover-pattern: radial-gradient(circle at 50% 50%, rgba(0,0,0,.55) 0 1.4px, transparent 1.8px);
   --cover-pattern-op:.5;
   --cover-blend:multiply;
@@ -1020,7 +1022,7 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--bone);outline-offse
   --cover-filter: saturate(.62) contrast(1.12) brightness(.78);
   --cover-bg:
     linear-gradient(150deg, rgba(42,6,8,.5) 0%, rgba(141,11,18,.42) 55%, rgba(195,17,26,.35) 100%),
-    url("assets/cover-hymn.jpg") center 50%/cover no-repeat;
+    url("assets/cover-hymn.webp") center 50%/cover no-repeat;
   --cover-pattern:
     repeating-conic-gradient(from 0deg at 40% 40%, rgba(0,0,0,.30) 0deg 8deg, transparent 8deg 16deg),
     radial-gradient(circle at 70% 30%, rgba(242,236,227,.22) 0 30%, transparent 62%);
@@ -1036,7 +1038,7 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--bone);outline-offse
   --cover-filter: saturate(.5) contrast(1.15) brightness(.55);
   --cover-bg:
     linear-gradient(150deg, rgba(10,7,9,.55) 0%, rgba(42,31,36,.5) 50%, rgba(91,67,76,.42) 100%),
-    url("assets/cover-sleep.jpg") center 50%/cover no-repeat;
+    url("assets/cover-sleep.webp") center 50%/cover no-repeat;
   --cover-pattern:
     repeating-linear-gradient(-28deg, rgba(242,236,227,.18) 0 1px, transparent 1px 8px),
     radial-gradient(circle at 30% 70%, rgba(195,17,26,.5) 0 22%, transparent 58%);
@@ -1837,7 +1839,7 @@ body.detail-open .stage3d canvas:active{ cursor: grabbing; }
 #bg-smoke{
   position:fixed;inset:0;
   z-index:0;                       /* 不能是负数，否则被 body 盖掉 */
-  background-image:url("assets/bg-smoke.jpg");
+  background-image:url("assets/bg-smoke.webp");
   background-size:cover;
   background-position:center 30%;
   background-repeat:no-repeat;
@@ -2149,7 +2151,7 @@ body.detail-open #bgm{
   const img = new Image();
   img.onload = () => document.body.classList.replace('no-statue', 'has-statue');
   img.onerror = () => document.body.classList.replace('has-statue', 'no-statue');
-  img.src = 'assets/statue.png';
+  img.src = 'assets/statue.webp';
 })();
 
 /* 首页 → 列表页：深色带扫过 */
@@ -2324,7 +2326,7 @@ const BOOKS = [
     detailGlow: 'rgba(195,17,26,.42)',
     transBg: '#3a2429',
     face: 'linear-gradient(150deg,#1a1410 0%,#3d342a 52%,#705f4c 100%)',
-    img: 'assets/cover-sanctuary.jpg',
+    img: 'assets/cover-sanctuary.webp',
     body: '自创世的誓约里降生，世人却执着于他与生俱来的轮廓，为他冠上<strong>罪的称谓</strong><br>他携缄默的神性栖于沉寂之中，这份爱即是<strong>盟约</strong>，一旦应允，永无背弃<br>与他相伴，是一场<strong>自愿的朝圣</strong>，踏进来，就不必寻归途。', link: 'https://www.kdocs.cn/l/cedbMnBj9xrf'
   },
   {
@@ -2336,7 +2338,7 @@ const BOOKS = [
     detailGlow: 'rgba(141,11,18,.40)',
     transBg: '#48202a',
     face: 'linear-gradient(150deg,#2a0608 0%,#8d0b12 52%,#43141b 100%)',
-    img: 'assets/cover-hymn.jpg',
+    img: 'assets/cover-hymn.webp',
     body: '世人祈求<strong>赤裸无掩</strong>的赤诚，她却于疏离的间隙凝望灵魂<br>不妄作挽留，不轻易布施真心，用<strong>自持</strong>封存心底沉敛的执念<br>倘若你甘愿越过她立下的界碑，便要知晓，往后所有起落行止，皆在她沉静的谛视之中。', link: 'https://www.kdocs.cn/l/cheUIXAf0W1f'
   },
   {
@@ -2348,7 +2350,7 @@ const BOOKS = [
     detailGlow: 'rgba(80,26,34,.34)',
     transBg: '#2e2329',
     face: 'linear-gradient(150deg,#0f0c0e 0%,#2a1f24 52%,#5b434c 100%)',
-    img: 'assets/cover-sleep.jpg',
+    img: 'assets/cover-sleep.webp',
     body: '世人将<strong>倾尽袒露</strong>奉为情爱的圣证，<br>我独信持守分寸的<strong>凝睇</strong>，才是至高的观照<br>你既踏临我的界域，便该知晓<br>你一切行止浮沉，尽在我沉静的谛视之中。', link: 'https://www.kdocs.cn/l/cgb9yIVtKp4H'
   }
 ];
@@ -2738,9 +2740,9 @@ function makePaperPBR(renderer) {
 }
 
 const BOOKS_META = [
-  { img: 'assets/cover-sanctuary.jpg', spine: 0x8d0b12, title: '阴翳中的圣所', vol: 'VOL. I' },
-  { img: 'assets/cover-hymn.jpg',      spine: 0x9e1119, title: '骨与血的颂歌', vol: 'VOL. II' },
-  { img: 'assets/cover-sleep.jpg',     spine: 0x2a2028, title: '神祗的沉眠',   vol: 'VOL. III' },
+  { img: 'assets/cover-sanctuary.webp', spine: 0x8d0b12, title: '阴翳中的圣所', vol: 'VOL. I' },
+  { img: 'assets/cover-hymn.webp',      spine: 0x9e1119, title: '骨与血的颂歌', vol: 'VOL. II' },
+  { img: 'assets/cover-sleep.webp',     spine: 0x2a2028, title: '神祗的沉眠',   vol: 'VOL. III' },
 ];
 
 function makeBookShared(ctx, meta, index) {
@@ -3049,7 +3051,8 @@ whenBootDone(function () {
       const dx = e.clientX - px;
       if (Math.abs(dx) > 2) moved = true;
       spin += dx * 0.006;
-      spin = Math.max(-0.88, Math.min(0.22, spin));
+      /* 允许左右各转约 100°，够看清封面与书脊 */
+      spin = Math.max(LIST_ROT.y - 1.75, Math.min(LIST_ROT.y + 1.75, spin));
       px = e.clientX; py = e.clientY;
       canvas.style.cursor = 'grabbing';
     } else {
@@ -3234,9 +3237,11 @@ whenBootDone(function () {
       // 用 easeOut 曲线让起步更柔
       const hEase = h * h * (3 - 2 * h);
 
-      // 基础姿态 + 呼吸偏移（悬停时轻微前倾、上浮、左移）
+      /* 基础姿态 + 拖拽 + 呼吸偏移
+         spin 是拖拽累计角度，之前只累加不应用，所以拖动没反应 */
+      const spinOffset = spin - LIST_ROT.y;
       g.rotation.x = (0.26 + hEase * 0.055) + b.pitch;
-      g.rotation.y = LIST_ROT.y + b.yaw - hEase * 0.055;
+      g.rotation.y = LIST_ROT.y + spinOffset + b.yaw - hEase * 0.055;
       g.rotation.z = b.roll;
 
       const baseX = (i - 1) * 0.14;
@@ -3687,7 +3692,7 @@ const BOOKS = [
     detailGlow: 'rgba(195,17,26,.42)',
     transBg: '#3a2429',
     face: 'linear-gradient(150deg,#1a1410 0%,#3d342a 52%,#705f4c 100%)',
-    img: 'assets/cover-sanctuary.jpg',
+    img: 'assets/cover-sanctuary.webp',
     body: '自创世的誓约里降生，世人却执着于他与生俱来的轮廓，为他冠上<strong>罪的称谓</strong><br>他携缄默的神性栖于沉寂之中，这份爱即是<strong>盟约</strong>，一旦应允，永无背弃<br>与他相伴，是一场<strong>自愿的朝圣</strong>，踏进来，就不必寻归途。', link: 'https://www.kdocs.cn/l/cedbMnBj9xrf'
   },
   {
@@ -3699,7 +3704,7 @@ const BOOKS = [
     detailGlow: 'rgba(141,11,18,.40)',
     transBg: '#48202a',
     face: 'linear-gradient(150deg,#2a0608 0%,#8d0b12 52%,#43141b 100%)',
-    img: 'assets/cover-hymn.jpg',
+    img: 'assets/cover-hymn.webp',
     body: '世人祈求<strong>赤裸无掩</strong>的赤诚，她却于疏离的间隙凝望灵魂<br>不妄作挽留，不轻易布施真心，用<strong>自持</strong>封存心底沉敛的执念<br>倘若你甘愿越过她立下的界碑，便要知晓，往后所有起落行止，皆在她沉静的谛视之中。', link: 'https://www.kdocs.cn/l/cheUIXAf0W1f'
   },
   {
@@ -3711,7 +3716,7 @@ const BOOKS = [
     detailGlow: 'rgba(80,26,34,.34)',
     transBg: '#2e2329',
     face: 'linear-gradient(150deg,#0f0c0e 0%,#2a1f24 52%,#5b434c 100%)',
-    img: 'assets/cover-sleep.jpg',
+    img: 'assets/cover-sleep.webp',
     body: '世人将<strong>倾尽袒露</strong>奉为情爱的圣证，<br>我独信持守分寸的<strong>凝睇</strong>，才是至高的观照<br>你既踏临我的界域，便该知晓<br>你一切行止浮沉，尽在我沉静的谛视之中。', link: 'https://www.kdocs.cn/l/cgb9yIVtKp4H'
   }
 ];
@@ -3829,7 +3834,8 @@ addEventListener('keydown', (e) => {
   if (!btn) return;
   var audio = new Audio('assets/bgm.mp3');
   audio.loop = true;
-  audio.preload = 'auto';
+  /* 不要预载 2.9MB：点播放时才拉，避免抢首屏带宽 */
+  audio.preload = 'none';
   audio.volume = 0.55;
   var playing = false;
 
@@ -3922,6 +3928,12 @@ addEventListener('keydown', (e) => {
     ash.appendChild(frag);
   })();
 
+  /* 字体就绪后再揭幕：document.fonts.ready 通常 <300ms，
+     加 1.2s 上限兜底，避免慢网下长时间黑屏 */
+  var fontsReady = document.fonts && document.fonts.ready
+    ? Promise.race([document.fonts.ready, new Promise(function (r) { setTimeout(r, 1200); })])
+    : Promise.resolve();
+
   function reveal() {
     var home = document.getElementById('sceneHome');
     boot.classList.add('done');
@@ -3956,7 +3968,8 @@ addEventListener('keydown', (e) => {
     'REVELATUR LUMEN',
     'INTRAT ANIMA'
   ];
-  var DURATION = 4400;
+  /* 手机上没有耐心等 4.4 秒；2.4s 保留仪式感但不拖 */
+  var DURATION = (matchMedia('(max-width: 820px), (pointer: coarse)').matches ? 2400 : 3400);
   var startedAt = performance.now();
 
   function tick(now) {
@@ -3973,7 +3986,8 @@ addEventListener('keydown', (e) => {
       if (num) num.textContent = '100';
       if (vbar) vbar.style.height = '100%';
       if (status) status.textContent = 'INTRATIO CONCESSA';
-      setTimeout(reveal, 380);
+      /* 等字体就绪再揭幕（上限 1.2s）：字形替换藏在遮罩后面，用户看不到闪 */
+      fontsReady.then(function () { setTimeout(reveal, 380); });
     }
   }
   requestAnimationFrame(tick);
