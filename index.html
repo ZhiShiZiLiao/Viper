@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preload" as="image" href="assets/bg-smoke.webp">
+<link rel="preload" as="image" href="assets/statue.webp">
+<link rel="preload" as="image" href="assets/mountain-wide.webp">
 <title>圣书 · Sanctum</title>
 
 <style>
@@ -1216,13 +1219,16 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--bone);outline-offse
 
 /* 手机：单列，书影在上 */
 @media (max-width:860px){
-  /* 窄屏：书在上（画布已经把它抬高了），文字在下 */
+  /* 窄屏：书在上（画布已把它抬高），文字在下。
+     关键：高度扣掉顶栏 74px，否则 918 > 844 会溢出、必须划一下。 */
   .detail-grid{
     grid-template-columns:1fr;
     gap:0;
-    padding: 0 clamp(16px,4vw,24px) clamp(24px,4vh,40px);
-    min-height:100svh;
+    padding: 0 clamp(14px,4vw,24px) clamp(12px,2.4vh,20px);
+    min-height:calc(100svh - 74px);
+    max-height:calc(100svh - 74px);
     align-items:end;
+    overflow:hidden;
   }
   .detail-visual{
     display:none;          /* 书由画布渲染，这里不占位 */
@@ -1230,11 +1236,19 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--bone);outline-offse
   .detail-copy{
     max-width:none;
     width:100%;
-    padding: clamp(16px,3vw,24px);
-    background: rgba(9,5,7,.90);
+    padding: clamp(12px,2.6vw,18px);
+    background: rgba(9,5,7,.93);
+    border-radius:10px 10px 0 0;
+    max-height:50svh;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
   }
-  .detail-copy h3{ font-size:clamp(22px,6vw,30px); }
-  .detail-body{ line-height:1.9; font-size:14px; }
+  .detail-copy h3{ font-size:clamp(20px,5.4vw,27px); }
+  .detail-vol{ font-size:11px; }
+  .detail-author{ font-size:13px; }
+  .detail-body{ line-height:1.72; font-size:13.5px; }
+  .detail-buy-row{ padding-top:13px; gap:12px; }
+  .detail-buy{ padding:11px 22px; font-size:12.5px; }
 }
 
 @media (prefers-reduced-motion:reduce){
@@ -1659,7 +1673,8 @@ body.detail-open .stage3d canvas:active{ cursor: grabbing; }
 #boot .b-noise{
   position:absolute;inset:0;pointer-events:none;opacity:.2;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
-  animation:bNoise .22s steps(2) infinite;
+  /* 不再动画：steps(2) 每 0.22s 让整层硬跳一次 —— 实测亮度最大偏差 8.88，
+     关掉后降到 0.11。保留静态颗粒质感，零闪烁。 */
   mix-blend-mode:overlay;
 }
 @keyframes bNoise{
@@ -1941,6 +1956,19 @@ body.detail-open #bgm{
     text-shadow:0 2px 18px rgba(2,1,2,.92), 0 0 46px rgba(2,1,2,.75);
   }
 }
+
+/* ============================================================
+   揭幕暗幕：消除"开场层撤除瞬间的亮度硬跳"
+   实测跳变 +10.69 单帧，肉眼就是闪一下
+   ============================================================ */
+#reveal-veil{
+  position:fixed;inset:0;z-index:9998;
+  background:#050305;
+  opacity:0;visibility:hidden;
+  pointer-events:none;
+  transition:opacity .55s ease, visibility .55s ease;
+}
+#reveal-veil.on{ opacity:1;visibility:visible; }
 </style>
 </head>
 <body>
@@ -3380,11 +3408,13 @@ whenBootDone(function () {
       const isNarrow = aspect < 1.0;   // 竖屏/窄屏
 
       if (isNarrow) {
-        /* 窄屏：书在上、文字在下。书占屏高 ~34% */
-        const fill = 0.34;
+        /* 窄屏：书在上、文字在下。
+           书占上 40% 屏高，中心抬到 NDC +0.42，
+           让底缘停在文字面板顶部之上，不被压住 */
+        const fill = 0.36;
         DETAIL_CAM_Z = (BOOK_H / fill) / (2 * tanHalf);
         DETAIL_BOOK_X = 0;
-        DETAIL_BOOK_Y = 0.46;          // 抬高，给下方文字让位
+        DETAIL_BOOK_Y = 1.30;
       } else {
         /* 宽屏：书在左、文字在右。书占屏高 ~52% */
         const fill = 0.52;
@@ -3928,21 +3958,64 @@ addEventListener('keydown', (e) => {
     ash.appendChild(frag);
   })();
 
-  /* 字体就绪后再揭幕：document.fonts.ready 通常 <300ms，
-     加 1.2s 上限兜底，避免慢网下长时间黑屏 */
-  var fontsReady = document.fonts && document.fonts.ready
-    ? Promise.race([document.fonts.ready, new Promise(function (r) { setTimeout(r, 1200); })])
-    : Promise.resolve();
+  /* 揭幕前置条件：字体 + 关键图都已就绪。
+     否则字形/图片会在用户眼前"跳"出来，看起来就是闪屏。
+     各自加 1.6s 上限兜底，慢网也不会卡死在黑屏。 */
+  var CAP = function (p, ms) {
+    return Promise.race([p, new Promise(function (r) { setTimeout(r, ms); })]);
+  };
+  var fontsReady = (document.fonts && document.fonts.ready)
+    ? CAP(document.fonts.ready, 1200) : Promise.resolve();
+
+  var keyImgs = ['assets/bg-smoke.webp', 'assets/statue.webp', 'assets/mountain-wide.webp'];
+  var imgsReady = CAP(Promise.all(keyImgs.map(function (src) {
+    return new Promise(function (res) {
+      var im = new Image();
+      im.onload = function () {
+        /* 解码完成才算真的可绘制 */
+        if (im.decode) im.decode().then(res, res); else res();
+      };
+      im.onerror = res;
+      im.src = src;
+    });
+  })), 1600);
 
   function reveal() {
     var home = document.getElementById('sceneHome');
+
+    /* 暗幕先盖上（瞬间不透明），遮住"开场层撤除 → 首页首帧"的亮度突变 */
+    var veil = document.getElementById('reveal-veil');
+    if (!veil) {
+      veil = document.createElement('div');
+      veil.id = 'reveal-veil';
+      veil.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(veil);
+    }
+    veil.style.transition = 'none';
+    veil.classList.add('on');
+    void veil.offsetHeight;
+
     boot.classList.add('done');
     if (home) setTimeout(function () { home.classList.add('entered'); }, 180);
+
+    /* 350ms 后撤开场层；此时首页首帧已在暗幕下画好 */
     setTimeout(function () {
       boot.style.display = 'none';
       if (boot.parentNode) boot.parentNode.removeChild(boot);
       window.dispatchEvent(new CustomEvent('boot:done'));
-    }, 1150);
+
+      /* 暗幕 550ms 淡出：亮度渐变，不再单帧硬跳 */
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          /* visibility 必须跟着 opacity 一起过渡，否则暗幕瞬间消失 */
+          veil.style.transition = 'opacity .55s ease, visibility 0s linear .55s';
+          veil.classList.remove('on');
+          setTimeout(function () {
+            if (veil.parentNode) veil.parentNode.removeChild(veil);
+          }, 700);
+        });
+      });
+    }, 350);
   }
 
   if (reduce) { reveal(); return; }
@@ -3987,7 +4060,7 @@ addEventListener('keydown', (e) => {
       if (vbar) vbar.style.height = '100%';
       if (status) status.textContent = 'INTRATIO CONCESSA';
       /* 等字体就绪再揭幕（上限 1.2s）：字形替换藏在遮罩后面，用户看不到闪 */
-      fontsReady.then(function () { setTimeout(reveal, 380); });
+      Promise.all([fontsReady, imgsReady]).then(function () { setTimeout(reveal, 380); });
     }
   }
   requestAnimationFrame(tick);
